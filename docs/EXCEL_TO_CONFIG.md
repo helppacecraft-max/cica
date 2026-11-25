@@ -53,6 +53,8 @@ The sheet cannot say *which JSON key holds the subscriber key* or *how to find l
 settings:                       # change how the SHEET is interpreted (all optional; see converter/defaults.py)
   path_template: "$.{api_field}"          # e.g. "$.data.{api_field_lower}" if responses are camelCase/lowercase/wrapped
   rest_path_regex: "/RestServices/.+/api/"
+  extra_path_param_rules:                  # ADDED to the built-in Claims/Lines/Coverage rules (never replaces them)
+    - {after: Associates, param: associate_id}    # literal ID after /Associates/ in the sheet's URLs -> {associate_id}
   group_aliases: { "claim level data": "claim" }
   type_map: { numeric: decimal }
   string_api_field_patterns: ["_ID$", "_NPI$"]
@@ -60,6 +62,11 @@ settings:                       # change how the SHEET is interpreted (all optio
 project:                        # config-level values
   version: 2
   claim_id_pattern: "^[0-9]{2}[A-Z][0-9]{9}$"      # tighten to your real claim-ID format
+  request:                                           # which identifiers callers send (default: just claim_id)
+    inputs:
+      - {name: claim_id}
+      - {name: associate_id, pattern: "^[0-9]{1,10}$", required: false}
+    at_least_one_of: []
   null_values: ["1753-01-01", "9999-12-31"]         # raw strings to treat as null (if Facets uses sentinels)
 
 source_aliases:                 # rename generated sources (do this FIRST; later keys use the new names)
@@ -69,7 +76,7 @@ source_aliases:                 # rename generated sources (do this FIRST; later
 sources:                        # patch a source
   family_coverage:
     params:
-      subscriber_key: {from_source: claim_summary, path: "$.SBSB_ID"}     # REQUIRED for any {placeholder} other than claim_id / line_no
+      subscriber_key: {from_source: claim_summary, path: "$.SBSB_ID"}     # REQUIRED for any {placeholder} that is neither a request input nor line_no
   claims_inquiry_lines_details:
     foreach:
       discovery: {mode: from_source, source: claim_summary, path: "$.LINE_COUNT", kind: count, max: 200}
@@ -91,11 +98,12 @@ Merge order: `project` → `source_aliases` → `sources` → `fields` → `add_
 
 | Code | Severity | Meaning / what to do |
 |---|---|---|
-| `UNBOUND_PARAM` | action | A URL needs an ID from another response. The report prints the exact YAML to add to overrides; fill in the JSONPath. |
+| `UNBOUND_PARAM` | action | A URL placeholder has no source. Either the caller sends it (declare it under `project.request.inputs`) or it comes from another response (bind it under `sources.<name>.params`). The report prints the YAML for both. |
 | `CONFIG_INVALID` | error | Semantic validation failed (message says why). |
 | `NON_REST_URL` | warn | URL isn't a REST endpoint (UI URL, bare host, query string). Field skipped. **Mandatory fields skipped are flagged and counted.** Fix the URL in the sheet or add the field via `add_fields`. |
 | `FILL_SERIES_URLS` | warn | Consecutive URLs differ only by an incrementing number — an Excel drag-fill accident. Fix the sheet. |
 | `DUPLICATE_MAPPING` | warn | Two business fields map to the same API field in one group (e.g. *Modifiers* = *Proc*). Probably a copy-paste error. |
+| `LITERAL_ID_IN_PATH` | warn | A path segment with digits looks like a hard-coded ID no rule replaced (it would stay in the config). Add `settings.extra_path_param_rules` and declare the input. |
 | `BRACKET_PLACEHOLDER` | warn | URL has `[clcl_id]` where the sheet elsewhere says the key is the subscriber key. Confirm which ID the endpoint takes. |
 | `MIXED_CARDINALITY_GROUP` | warn | A group mixes per-line and claim-level fields; claim-level values repeat on each row. Confirm that's intended. |
 | `DISCOVERY_DEFAULT` | warn | Lines will be probed until 404. Prefer `from_source` if Summary exposes lines. |

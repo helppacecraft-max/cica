@@ -15,7 +15,32 @@ from .models import ProjectConfig
 PLACEHOLDER = re.compile(r"\{([A-Za-z_]\w*)\}")
 IDENT = re.compile(r"^[a-z][a-z0-9_]*$")
 PROJECT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
-BUILTIN_PARAMS = {"claim_id"}
+RESERVED_INPUT_NAMES = {"groups", "fields", "strict", "include_provenance"}
+MAX_INPUTS = 20
+DEFAULT_INPUT_PATTERN = r"^[A-Za-z0-9_.\-]{1,64}$"
+
+
+def effective_pattern(cfg: ProjectConfig, spec) -> str:
+    if spec.pattern:
+        return spec.pattern
+    return cfg.claim_id_pattern if spec.name == "claim_id" else DEFAULT_INPUT_PATTERN
+
+
+def source_inputs(cfg: ProjectConfig, name: str) -> set[str]:
+    """Request inputs a source needs, directly or through the sources it depends on."""
+    declared = set(cfg.input_names())
+    out: set[str] = set()
+    seen: set[str] = set()
+    stack = [name]
+    while stack:
+        n = stack.pop()
+        if n in seen or n not in cfg.sources:
+            continue
+        seen.add(n)
+        src = cfg.sources[n]
+        out |= (set(placeholders(src.path)) | {p for v in src.query.values() for p in placeholders(v)}) & declared
+        stack.extend(source_dependencies(src))
+    return out
 
 
 def placeholders(path: str) -> list[str]:
@@ -46,6 +71,34 @@ def validate_project(cfg: ProjectConfig) -> list[str]:
     except re.error as e:
         errors.append(f"claim_id_pattern is not a valid regex: {e}")
 
+    # ---- request inputs -----------------------------------------------------------------
+    inputs = cfg.request.inputs
+    names = [i.name for i in inputs]
+    if not inputs:
+        errors.append("request.inputs: declare at least one input")
+    if len(inputs) > MAX_INPUTS:
+        errors.append(f"request.inputs: {len(inputs)} inputs declared, maximum is {MAX_INPUTS}")
+    for dup in sorted({n for n in names if names.count(n) > 1}):
+        errors.append(f"request.inputs: duplicate input {dup!r}")
+    for i in inputs:
+        if not IDENT.match(i.name):
+            errors.append(f"request input {i.name!r}: name must match {IDENT.pattern}")
+        if i.name in RESERVED_INPUT_NAMES:
+            errors.append(f"request input {i.name!r}: reserved name (reserved: {sorted(RESERVED_INPUT_NAMES)})")
+        try:
+            re.compile(effective_pattern(cfg, i))
+        except re.error as e:
+            errors.append(f"request input {i.name!r}: pattern is not a valid regex: {e}")
+    for n in cfg.request.at_least_one_of:
+        if n not in names:
+            errors.append(f"request.at_least_one_of: {n!r} is not a declared input")
+    used_inputs = set()
+    for s in cfg.sources.values():
+        used_inputs |= set(placeholders(s.path)) | {p for v in s.query.values() for p in placeholders(v)}
+    for n in names:
+        if n not in used_inputs:
+            errors.append(f"request input {n!r} is declared but no source path or query uses {{{n}}}")
+
     # ---- sources -------------------------------------------------------------------
     for name, src in cfg.sources.items():
         w = f"source {name!r}"
@@ -58,10 +111,10 @@ def validate_project(cfg: ProjectConfig) -> list[str]:
         if src.response_root:
             _check_path(src.response_root, f"{w} response_root", errors)
 
-        bound = set(BUILTIN_PARAMS) | set(src.params)
+        bound = set(names) | set(src.params)
         if src.foreach:
             bound.add(src.foreach.param)
-            if src.foreach.param in src.params or src.foreach.param in BUILTIN_PARAMS:
+            if src.foreach.param in src.params or src.foreach.param in names:
                 errors.append(f"{w}: foreach param {src.foreach.param!r} is also bound elsewhere")
             d = src.foreach.discovery
             if d.mode == "fixed" and not d.values:
@@ -75,14 +128,18 @@ def validate_project(cfg: ProjectConfig) -> list[str]:
                     elif cfg.sources[d.source].foreach:
                         errors.append(f"{w}: discovery source {d.source!r} must not itself be foreach")
                     _check_path(d.path, f"{w} discovery path", errors)
-        for ph in placeholders(src.path):
+        for ph in [*placeholders(src.path), *(p for v in src.query.values() for p in placeholders(v))]:
             if ph not in bound:
                 errors.append(
-                    f"{w}: URL placeholder {{{ph}}} is not bound -- add "
-                    f"sources.{name}.params.{ph} {{from_source, path}} in the overrides file"
+                    f"{w}: placeholder {{{ph}}} is not bound -- either declare it as a request input "
+                    f"(project.request.inputs) or add sources.{name}.params.{ph} {{from_source, path}} "
+                    "in the overrides file"
                 )
+        for pname in src.params:
+            if pname in names:
+                errors.append(f"{w}: param {pname!r} has the same name as a request input")
         for pname, b in src.params.items():
-            if pname not in placeholders(src.path):
+            if pname not in placeholders(src.path) and not any(pname in placeholders(v) for v in src.query.values()):
                 errors.append(f"{w}: param {pname!r} is not used in the path")
             if b.from_source not in cfg.sources:
                 errors.append(f"{w}: param {pname!r} refers to unknown source {b.from_source!r}")

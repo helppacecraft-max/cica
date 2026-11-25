@@ -5,7 +5,7 @@ Four levels, cheapest first. **Levels 1–3 prove the software works. Only level
 
 | Level | Needs Facets? | Proves | Time |
 |---|---|---|---|
-| 1. Automated suite | no | engine, converter, API behave as designed (117 tests) | 10 s |
+| 1. Automated suite | no | engine, converter, API behave as designed (186 tests) | 10 s |
 | 2. `selftest` | no | whole pipeline works on sample data | 5 s |
 | 3. Manual run vs mock Facets | no | you can operate it; failure behaviour visible | 15 min |
 | 4. Verify against real Facets | **yes** | **field paths and values are correct** | your sign-off |
@@ -42,7 +42,7 @@ planner (minimum calls, ordering); executor (retries, 404 vs 5xx, partial line f
 path-injection attempts, response_root, discovery modes); API (strict mode, auth, multi-project,
 readiness, reload keeps old config on bad new one); contract-test and `validate --samples`.
 
-All green ⇒ exit code 0 and `117 passed` (the number grows as tests are added).
+All green ⇒ exit code 0 and `186 passed` (the number grows as tests are added).
 
 ## 2. `selftest`
 
@@ -78,6 +78,7 @@ PowerShell:
 $env:FACETS_DEMO_BASE_URL = "http://127.0.0.1:9000"
 facets-wrapper serve --config-dir work/configs --port 8000
 ```
+Ask the service what a project accepts: `GET /v1/catalog` → `request.inputs` (name / required / pattern / label).
 Check `http://127.0.0.1:8000/readyz` → `{"ready":true,...}` and browse `http://127.0.0.1:8000/docs`.
 
 **Call it** — bash:
@@ -102,7 +103,8 @@ Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/v1/claims/enrich -Cont
 | `ERROR500XX` | every endpoint 500 | `complete:false`, `errors[]` has `http_500` (after 3 attempts), dependents `dependency_…_unavailable`; add `"strict":true` ⇒ **HTTP 502** |
 | `BADJSON01` | HTTP 200, HTML body | `errors[]` code `invalid_json` |
 | `NOLINES01` | Summary says 3 lines, each line 404 | 3 rows with `source_not_found` statuses (explicit, not silently empty) |
-| `bad id!` / `../etc` | — | HTTP **422** `invalid_claim_id`, no upstream call made |
+| `bad id!` / `../etc` / `"ABC123\n"` | — | HTTP **422** `invalid_inputs` with `"invalid":["claim_id"]` (the value is never echoed), no upstream call made |
+| `{"claim_id":"CLAIM000001","member_id":"1"}` | — | HTTP **422** `invalid_inputs` with `"unknown":["member_id"]` and the list of `declared_inputs` |
 | `"groups":["nope"]` | — | HTTP 422 `invalid_selection` naming the unknown group |
 
 Also try: stop the mock, call again → `errors[]` `connect_error:…` after retries; set
@@ -112,6 +114,43 @@ The wrapper prints one audit line per request (correlation ID, project, per-sour
 ## 4. Verify against real Facets (the accuracy gate)
 
 Do this per project, with a person who knows the claim data. Use **non-production or sanitised** claims where you can.
+
+### 4.0 Find out how Facets wants you to authenticate (do this first)
+
+You don't need to know in advance. Set the base URL, make **one** call with `probe`, read what the server says, adjust, repeat.
+`probe` prints status, the server's `WWW-Authenticate` hint, and the JSON **structure (key names and types — never values)**.
+
+bash:
+```bash
+export FACETS_EMBLEM_BASE_URL=https://<facets-host>:10408
+facets-wrapper probe --project emblem --path /RestServices/facets/api/v1/Claims/<A-REAL-CLAIM-ID>/Inquiry/Summary
+```
+PowerShell:
+```powershell
+$env:FACETS_EMBLEM_BASE_URL = "https://<facets-host>:10408"
+facets-wrapper probe --project emblem --path /RestServices/facets/api/v1/Claims/<A-REAL-CLAIM-ID>/Inquiry/Summary
+```
+| You see | Meaning → do |
+|---|---|
+| `HTTP 200 … authenticated and JSON received` + structure | done. The key names printed are what `path_template` / `response_root` must match |
+| `HTTP 401`, `www-authenticate: Basic …` | `FACETS_EMBLEM_AUTH=basic` + `_USERNAME` / `_PASSWORD` |
+| `HTTP 401`, `www-authenticate: Bearer …` | `AUTH=bearer` + `_TOKEN` |
+| `HTTP 401/403`, no hint | look at a request that works for you in Postman / browser dev tools → Headers tab. A header like `X-Api-Key: …` ⇒ `AUTH=header` with `_AUTH_HEADER_NAME=X-Api-Key` and `_AUTH_HEADER_VALUE`. Extra headers such as a tenant/app id ⇒ `_HEADERS='{"X-Tenant":"…"}'` |
+| `HTTP 403` after trying the right style | account lacks permission for that endpoint, or a required extra header is missing |
+| `HTTP 404` | credentials fine; path or claim ID wrong |
+| `body is not JSON` | wrong URL or an HTML login page |
+| `connection error` / `timeout` | host/port, VPN/firewall, or TLS (`_CA_BUNDLE`) |
+
+Add `--save samples/emblem/claims_inquiry_summary.json` to keep the raw response as a sample (**real data on disk — sanitise PHI first**; this replaces hand-saving in 4.2).
+
+**Rehearse locally first** — the mock can demand credentials, so you can watch a 401, fix your variables, and see it go green without touching Facets:
+```bash
+facets-wrapper mock-upstream --config work/configs/demo/mapping.yml --port 9000 --require-header "X-Facets-Key=demo-secret"
+#   also: --require-basic user:pass | --require-bearer TOKEN | --require-query apikey=value  (repeatable)
+FACETS_DEMO_BASE_URL=http://127.0.0.1:9000 facets-wrapper probe --project demo --path /RestServices/facets/api/v1/Claims/CLAIM000001/Inquiry/Summary   # -> 401
+FACETS_DEMO_BASE_URL=http://127.0.0.1:9000 FACETS_DEMO_AUTH=header FACETS_DEMO_AUTH_HEADER_NAME=X-Facets-Key FACETS_DEMO_AUTH_HEADER_VALUE=demo-secret \
+    facets-wrapper probe --project demo --path /RestServices/facets/api/v1/Claims/CLAIM000001/Inquiry/Summary                                   # -> 200
+```
 
 ### 4.1 Convert your real sheet
 ```bash
@@ -150,7 +189,7 @@ Exit code 1 if any **required** field fails (`--strict`: also optional failures 
 
 ```
 cases/emblem/<case_name>/
-    case.json          {"claim_id": "…"}                 (optional "groups"/"fields")
+    case.json          {"inputs": {"claim_id": "…", "associate_id": "…"}}     (optional "groups"/"fields"; legacy {"claim_id": "…"} works)
     responses/         the files from 4.2 (404 is simulated for sources without a file)
     expected.json      what the business says the answer is
 ```
@@ -194,7 +233,9 @@ The service itself helps: `missing_in_source` / `coercion_error` statuses in pro
 | Report: *Config loadable: NO* | read ACTION REQUIRED / ERRORS; the usual cause is an unbound `{subscriber_key}` |
 | `serve`: *Refusing to start* | config invalid — the message lists every problem |
 | `503 project_not_ready` | `FACETS_<PROJECT>_BASE_URL` (or auth vars) missing; see `/readyz`. The name is the project **upper-cased** |
-| `401 invalid_api_key` | `FACETS_WRAPPER_API_KEY_<P>` is set; send `X-API-Key` |
+| `401 invalid_api_key` | the *wrapper's own* key (`FACETS_WRAPPER_API_KEY_<P>`) is set; send `X-API-Key` to the wrapper |
+| `errors[]` shows `http_401` / `http_403` from a source | Facets rejected the wrapper's credentials — run `probe`, see §4.0 |
+| `503 project_not_ready` mentioning auth / header | a credential variable is missing or malformed; `/readyz` lists the problem (never the secret) |
 | `400 project_required` | several projects loaded: send `X-Project` |
 | Everything `missing_in_source` | wrong `path_template` / `response_root`; inspect a real response and run `validate --samples` |
 | `source_failed` + `param_…_unresolved` | the JSONPath bound in `params` finds nothing, or the value has characters outside `[A-Za-z0-9_.-]` |

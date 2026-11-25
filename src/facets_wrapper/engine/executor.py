@@ -64,13 +64,13 @@ async def execute_plan(
     cfg: ProjectConfig,
     plan: Plan,
     client: UpstreamClient,
-    claim_id: str,
+    inputs: dict[str, str],
     correlation_id: str | None = None,
 ) -> dict[str, SourceResult]:
     results: dict[str, SourceResult] = {}
     for level in plan.levels:
         outs = await asyncio.gather(
-            *(_run_source(n, cfg, client, claim_id, results, correlation_id) for n in level)
+            *(_run_source(n, cfg, client, inputs, results, correlation_id) for n in level)
         )
         results.update({r.name: r for r in outs})
     return results
@@ -80,14 +80,14 @@ async def _run_source(
     name: str,
     cfg: ProjectConfig,
     client: UpstreamClient,
-    claim_id: str,
+    inputs: dict[str, str],
     results: dict[str, SourceResult],
     cid: str | None,
 ) -> SourceResult:
     t0 = time.perf_counter()
     src = cfg.sources[name]
     try:
-        params: dict[str, Any] = {"claim_id": claim_id}
+        params: dict[str, Any] = dict(inputs)
         for pname, b in src.params.items():
             dep = results[b.from_source]
             item = dep.item(None)
@@ -108,9 +108,9 @@ async def _run_source(
 
 
 async def _fetch(src: SourceConfig, params: dict[str, Any], client: UpstreamClient, cid: str | None) -> HttpResult:
-    res = await client.get_json(
-        render_path(src.path, params), src.query, correlation_id=cid, timeout_s=src.timeout_s
-    )
+    # query values may use {input} placeholders; httpx URL-encodes them
+    query = {k: PLACEHOLDER.sub(lambda m: str(params[m.group(1)]), v) for k, v in src.query.items()}
+    res = await client.get_json(render_path(src.path, params), query, correlation_id=cid, timeout_s=src.timeout_s)
     if res.status == "ok" and src.response_root:
         matches = find(src.response_root, res.data)
         if len(matches) != 1:

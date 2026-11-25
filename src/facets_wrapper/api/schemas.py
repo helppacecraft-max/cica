@@ -6,9 +6,12 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class EnrichRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    """Control keys are fixed. Every OTHER top-level key is a request *input* (e.g. claim_id, associate_id):
+    which ones exist, their patterns and whether they are required are defined per project in the
+    config (``request.inputs``) -- see GET /v1/catalog. Unknown keys are rejected with 422."""
 
-    claim_id: str = Field(..., description="Facets claim ID (validated against the project's claim_id_pattern)")
+    model_config = ConfigDict(extra="allow")
+
     groups: list[str] | None = Field(None, description="Return only these groups (e.g. ['claim','line'])")
     fields: list[str] | None = Field(None, description="Return only these fields: 'group.field' or bare 'field'")
     strict: bool = Field(False, description="If true, an incomplete result is returned with HTTP 502 instead of 200")
@@ -16,7 +19,7 @@ class EnrichRequest(BaseModel):
 
 
 class EnrichResponse(BaseModel):
-    claim_id: str
+    inputs: dict[str, str] = Field(..., description="the validated inputs that were used")
     complete: bool = Field(..., description="False if any source failed or any REQUIRED field is not 'ok'")
     data: dict[str, Any] = Field(..., description="group -> object, or list of row objects for per-line groups")
     field_status: dict[str, Any] = Field(..., description="same shape as data, values are status strings")

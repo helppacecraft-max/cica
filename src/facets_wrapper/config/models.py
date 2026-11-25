@@ -81,17 +81,37 @@ class FieldConfig(_Strict):
         return data
 
 
+class InputSpec(_Strict):
+    """One identifier the caller may send in the request body (flat key), e.g. claim_id, associate_id."""
+
+    name: str
+    pattern: str | None = None  # regex the value must match; claim_id falls back to claim_id_pattern
+    required: bool = True
+    label: str | None = None
+
+
+class RequestConfig(_Strict):
+    inputs: list[InputSpec] = Field(default_factory=lambda: [InputSpec(name="claim_id")])
+    at_least_one_of: list[str] = Field(
+        default_factory=list, description="at least one of these inputs must be supplied (for 'either ID' lookups)"
+    )
+
+
 class ProjectConfig(_Strict):
     schema_version: int = 1
     project: str
     version: int | str = 1
-    claim_id_pattern: str = r"^[A-Za-z0-9]{6,20}$"
+    claim_id_pattern: str = r"^[A-Za-z0-9]{6,20}$"  # default pattern for the input named claim_id
+    request: RequestConfig = Field(default_factory=RequestConfig)
     null_values: list[str] = Field(default_factory=list)
     meta: dict[str, Any] = Field(default_factory=dict)
     sources: dict[str, SourceConfig]
     fields: list[FieldConfig]
 
     # -- helpers -----------------------------------------------------------------
+    def input_names(self) -> list[str]:
+        return [i.name for i in self.request.inputs]
+
     def groups(self) -> list[str]:
         seen: list[str] = []
         for f in self.fields:

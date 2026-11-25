@@ -4,6 +4,7 @@
   validate       check a config; optionally check every field path against real sample responses
   serve          run the wrapper API
   contract-test  replay recorded real responses, compare with human-verified expected output
+  probe          one real call to Facets: test credentials, see the JSON structure (no values printed)
   mock-upstream  run a fake Facets generated from a config (for local end-to-end testing)
   sample         write a sample workbook + overrides to try the workflow
   selftest       sample -> convert -> validate -> mock upstream -> wrapper -> assertions, in one command
@@ -155,14 +156,31 @@ def cmd_contract(a) -> int:
     return 1 if bad else 0
 
 
+def cmd_probe(a) -> int:
+    import os
+
+    from .probe import run_probe
+
+    return run_probe(a.project, a.path, dict(os.environ), a.save)
+
+
 def cmd_mock(a) -> int:
     import uvicorn
 
     from .mock_upstream import create_mock_app
 
+    from .mock_upstream import parse_requirements
+
     cfg = load_project_file(a.config)
-    app = create_mock_app(cfg, a.lines)
+    try:
+        req_h, req_q = parse_requirements(a.require_header, a.require_query, a.require_basic, a.require_bearer)
+    except ValueError as e:
+        _p(f"ERROR: {e}")
+        return 1
+    app = create_mock_app(cfg, a.lines, req_h, req_q)
     _p(f"Mock Facets for '{cfg.project}' on http://{a.host}:{a.port}  (lines per claim: {a.lines})")
+    if req_h or req_q:
+        _p(f"Requires credentials: headers {sorted(req_h)} query {sorted(req_q)} (values not shown) -> otherwise 401")
     _p("Magic claim IDs: NOTFOUND* -> 404, ERROR500* -> 500, BADJSON* -> non-JSON, NOLINES* -> no line items")
     uvicorn.run(app, host=a.host, port=a.port, log_level="warning")
     return 0
@@ -267,11 +285,21 @@ def main(argv: list[str] | None = None) -> int:
     ct.add_argument("--plugins")
     ct.set_defaults(fn=cmd_contract)
 
+    pr = sub.add_parser("probe", help="ONE real call to Facets: tests credentials, shows JSON structure (no values)")
+    pr.add_argument("--project", required=True, help="project name (selects the FACETS_<PROJECT>_* env vars)")
+    pr.add_argument("--path", required=True, help="e.g. /RestServices/facets/api/v1/Claims/<ID>/Inquiry/Summary")
+    pr.add_argument("--save", help="also save the RAW response here (real data!) for validate --samples / contract-test")
+    pr.set_defaults(fn=cmd_probe)
+
     m = sub.add_parser("mock-upstream", help="fake Facets generated from a config")
     m.add_argument("--config", required=True)
     m.add_argument("--host", default="127.0.0.1")
     m.add_argument("--port", type=int, default=9000)
     m.add_argument("--lines", type=int, default=3)
+    m.add_argument("--require-header", action="append", default=[], metavar="NAME=VALUE", help="answer 401 unless this header is sent (repeatable)")
+    m.add_argument("--require-query", action="append", default=[], metavar="NAME=VALUE", help="answer 401 unless this query param is sent (repeatable)")
+    m.add_argument("--require-basic", metavar="USER:PASS", help="require HTTP Basic auth")
+    m.add_argument("--require-bearer", metavar="TOKEN", help="require 'Authorization: Bearer TOKEN'")
     m.set_defaults(fn=cmd_mock)
 
     sm = sub.add_parser("sample", help="write a sample workbook + overrides")

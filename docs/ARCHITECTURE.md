@@ -28,11 +28,17 @@ The code contains **no** Facets knowledge. Everything project-specific is in `ma
 
 ## 3. Request lifecycle
 
-`POST /v1/claims/enrich` with `{"claim_id": "...", "groups": [...], "fields": [...], "strict": false}`
+`POST /v1/claims/enrich` — flat JSON body. **Inputs** are the identifiers your project declares (`request.inputs`, e.g. `claim_id`, `associate_id`); the four **controls** are fixed:
+
+```json
+{ "claim_id": "26A369350300", "associate_id": "4471",          // inputs: names/patterns/required come from the config
+  "groups": ["claim"], "fields": ["line.charges"],              // controls: what to return
+  "strict": false, "include_provenance": false }
+```
 
 1. **Resolve project** – `X-Project` header (optional if only one project is loaded); check `X-API-Key` if one is configured.
-2. **Validate input** – `claim_id` must match the project's `claim_id_pattern` (default `^[A-Za-z0-9]{6,20}$`). It is later URL-encoded again; two layers against path injection.
-3. **Plan** (`engine/planner.py`) – select the requested fields (none given ⇒ all), find the *minimum* set of sources they need, add sources those depend on, and sort into **levels**. Asking for 3 fields never triggers calls for the other 30.
+2. **Validate inputs** – every key that is not a control must be a declared input (else `unknown`); each value must **fully match** its pattern (`claim_id` defaults to `claim_id_pattern`, others to `^[A-Za-z0-9_.\-]{1,64}$`); required ones must be present; `at_least_one_of` is enforced. The 422 names the offending inputs, never their values. Values are URL-encoded again when used in a path — two layers against path injection.
+3. **Plan** (`engine/planner.py`) – select the requested fields (none given ⇒ all), drop fields whose sources need an input that was not supplied (reported in `meta.skipped_fields`; **an error** if you named such a field explicitly or nothing servable is left), find the *minimum* set of sources, add sources those depend on, and sort into **levels**. Asking for 3 fields never triggers calls for the other 30.
 4. **Execute** (`engine/executor.py`, `client.py`) – run level by level; sources inside a level run in parallel (`asyncio.gather`, capped by a per-project semaphore).
    - *Bound params*: a URL placeholder like `{subscriber_key}` is filled from another source's response. The value must match `^[A-Za-z0-9_.\-]{1,64}$` or the source is **skipped** (`param_…_unresolved`) — upstream data can never add path segments or a query string.
    - *foreach*: discover the items (`probe` until the first 404 / `from_source` list or count / `fixed`), then fetch each (parallel except probe, which is sequential by nature).
@@ -52,7 +58,7 @@ Latency ≈ two serial upstream hops + slowest call, however many sources are co
 
 ```jsonc
 {
-  "claim_id": "CLAIM000001",
+  "inputs": { "claim_id": "CLAIM000001" },   // the validated inputs that were used
   "complete": true,                      // false if ANY source failed/partial, or ANY required field is not "ok"
   "data": {
     "claim": { "provider_name": "…", "tax_id": "0123", "member_name": "Ann Lee" },   // object group
@@ -90,7 +96,7 @@ Error codes: `http_NNN`, `timeout`, `connect_error:<Type>`, `invalid_json`, `res
 
 ### HTTP codes
 
-`200` normal (even if `complete:false`) · `502` strict & incomplete · `422` bad claim ID / selection / body · `400` project required · `404` unknown project · `401` bad API key · `503` project not ready (no base URL / credentials).
+`200` normal (even if `complete:false`) · `502` strict & incomplete · `422` `invalid_inputs` (unknown / invalid / missing — names only) · `422` `inputs_missing_for_fields` · `422` `invalid_selection` / bad body · `400` project required · `404` unknown project · `401` bad API key · `503` project not ready (no base URL / credentials).
 
 ### Rules worth knowing
 
@@ -141,7 +147,7 @@ Startup is **fail-closed**: if any config is invalid the service refuses to star
 
 1. **Field paths are unverified until you run level 4 of `docs/TESTING.md`.** The sheet gives API field *names*, not JSON paths.
 2. **Line discovery defaults to probing** (`Lines/1`, `2`, … until 404, max 50), sequentially. Correct but slow for big claims, and it hits the endpoint once more than needed. If the claim Summary exposes a line count/list, configure `discovery.mode: from_source`.
-3. **Only GET + JSON**; auth = none/basic/bearer. No OAuth flows, no client-certificate mTLS (server-side CA bundle is supported).
+3. **Only GET + JSON**; outbound auth = none/basic/bearer/API-key header/query key + extra headers. No token-fetching flows (OAuth client-credentials, login-then-token), no client-certificate mTLS (server-side CA bundle is supported).
 4. **No caching, no batch endpoint, no wrapper-side rate limiting / circuit breaker.** Add at the gateway if needed.
 5. **Facets “null” sentinels** (e.g. a minimum SQL date such as `1753-01-01`) are *not* assumed. If the real data uses them, list them in `project.null_values` via overrides.
 6. **Not yet built:** live-capture of Facets responses (save them yourself and sanitise PHI), metrics/OpenTelemetry, per-caller authorisation beyond one API key per project.
@@ -150,6 +156,7 @@ Startup is **fail-closed**: if any config is invalid the service refuses to star
 ## 9. Security & PHI
 
 * No upstream payloads are logged — only correlation ID, project, source names/states, latency. Coercion errors never echo values.
-* Wrapper API: set `FACETS_WRAPPER_API_KEY_<PROJECT>`; without it the project is open (a warning is logged). Put it behind your gateway/TLS regardless.
+* **Outbound credentials** (wrapper → Facets): `none` / `basic` / `bearer` / `header` (any name, any API key) / `query`, plus arbitrary extra headers — all from environment variables per project, validated at startup (header-injection checks included), never in YAML, never logged, never in `/readyz` or error bodies. `facets-wrapper probe` tests them with one call and prints structure only. Not yet supported: token-fetch flows (OAuth/login), client-certificate mTLS.
+* Wrapper API (inbound): set `FACETS_WRAPPER_API_KEY_<PROJECT>`; without it the project is open (a warning is logged). Put it behind your gateway/TLS regardless.
 * Upstream TLS verification is on by default; `…_VERIFY_TLS=false` exists for lab use only.
 * `.gitignore` excludes `*.xlsx`, `/out`, `/local`, `.env`. Recorded samples/contract cases contain data — **sanitise before committing**.

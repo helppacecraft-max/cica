@@ -90,3 +90,41 @@ def test_invalid_api_field_is_skipped_not_guessed(tmp_path):
     row = ("X", "String", "Mandatory", "T", "C", "X", "SOME FIELD (see note)", U, "")
     res = convert(book(tmp_path / "h.xlsx", [(["Claim Level Data"], [row])]), "p")
     assert res.config["fields"] == [] and res.skipped[0]["code"] == "INVALID_API_FIELD" and res.skipped[0]["mandatory"]
+
+
+# ---- request inputs / path rules -------------------------------------------------------
+ASSOC = "https://h.example:1/RestServices/facets/api/v1/Associates/12345/Profile"
+ASSOC_ROW = ("Associate Name", "String", "Mandatory", "T", "C", "Associate Name", "ASSOC_NAME", ASSOC, "")
+
+
+def test_literal_id_in_path_is_flagged_when_no_rule_covers_it(tmp_path):
+    res = convert(book(tmp_path / "i.xlsx", [(["Claim Level Data"], [ROW, ASSOC_ROW])]), "p")
+    assert any(i.code == "LITERAL_ID_IN_PATH" and "12345" in i.message for i in res.issues)
+    assert any(i.code == "UNBOUND_PARAM" or i.code == "LITERAL_ID_IN_PATH" for i in res.issues)
+
+
+def test_extra_path_param_rule_is_additive_and_input_is_declared(tmp_path):
+    ov = tmp_path / "ov.yml"
+    ov.write_text("""
+settings:
+  extra_path_param_rules: [{after: Associates, param: associate_id}]
+project:
+  request:
+    inputs:
+      - {name: claim_id}
+      - {name: associate_id, pattern: '^[0-9]+$', required: false}
+""")
+    res = convert(book(tmp_path / "j.xlsx", [(["Claim Level Data"], [ROW, ASSOC_ROW])]), "p", ov)
+    paths = {s["path"] for s in res.config["sources"].values()}
+    assert "/RestServices/facets/api/v1/Associates/{associate_id}/Profile" in paths
+    assert "/RestServices/facets/api/v1/Claims/{claim_id}/Inquiry/Summary" in paths    # default Claims rule NOT lost
+    assert not any(i.code == "LITERAL_ID_IN_PATH" for i in res.issues)
+    assert res.loadable, res.load_errors
+    assert [i["name"] for i in res.config["request"]["inputs"]] == ["claim_id", "associate_id"]
+
+
+def test_unbound_param_snippet_offers_both_options(tmp_path):
+    row = ("X", "String", "Blank", "T", "C", "X", "CLCL_X", "https://h:1/RestServices/facets/api/v1/Claims/AB1/Inquiry/Family/Coverage/77/Inquiry", "")
+    res = convert(book(tmp_path / "k.xlsx", [(["Claim Level Data"], [row])]), "p")
+    msg = next(i.message for i in res.issues if i.code == "UNBOUND_PARAM")
+    assert "request input" in msg and "from_source" in msg and "subscriber_key" in msg

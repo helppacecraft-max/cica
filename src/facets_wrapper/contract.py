@@ -4,7 +4,8 @@ result with a human-verified ``expected.json``. This is the regression gate for 
 Case layout (one directory per claim scenario)::
 
     cases/<case_name>/
-        case.json              {"claim_id": "CLAIM000001", "groups": [...]?, "fields": [...]?}
+        case.json              {"inputs": {"claim_id": "CLAIM000001"}, "groups": [...]?, "fields": [...]?}
+                               (legacy {"claim_id": "..."} is also accepted)
         responses/
             <source>.json          response of a non-foreach source
             <source>.<n>.json      response of a foreach source for item n (e.g. claim_lines.1.json)
@@ -96,7 +97,12 @@ def run_cases(cfg: ProjectConfig, cases_dir: str | Path, update: bool = False) -
             continue
         spec = json.loads(spec_file.read_text(encoding="utf-8"))
         rt = ProjectRuntime(cfg, ProjectEnv(base_url="http://contract.invalid", retries=0, backoff_s=0), _transport(cfg, case / "responses"))
-        out = asyncio.run(rt.enrich(spec["claim_id"], spec.get("groups"), spec.get("fields")))
+        inputs = spec["inputs"] if "inputs" in spec else {"claim_id": spec["claim_id"]}
+        clean, problems = rt.check_inputs(inputs)
+        if problems:
+            results.append(CaseResult(case.name, False, [f"case.json inputs invalid: {problems}"]))
+            continue
+        out = asyncio.run(rt.enrich(clean, spec.get("groups"), spec.get("fields")))
         asyncio.run(rt.aclose())
         actual = {"complete": out["complete"], "data": out["data"], "field_status": out["field_status"]}
         exp_file = case / "expected.json"
