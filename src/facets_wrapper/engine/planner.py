@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from ..config.models import FieldConfig, ProjectConfig
-from ..config.validate import source_dependencies
+from ..config.validate import source_dependencies, source_inputs
 
 
 class SelectionError(Exception):
@@ -15,11 +15,20 @@ class SelectionError(Exception):
         super().__init__("invalid selection")
 
 
+class MissingInputsError(Exception):
+    """Selected fields need request inputs that were not supplied. ``fields`` maps field -> missing inputs."""
+
+    def __init__(self, fields: dict[str, list[str]]):
+        self.fields = fields
+        super().__init__("inputs missing for selected fields")
+
+
 @dataclass
 class Plan:
     groups: list[str]
     fields: list[FieldConfig]
     levels: list[list[str]]  # sources grouped by dependency depth; each level runs in parallel
+    skipped: dict[str, list[str]] = field(default_factory=dict)  # field -> missing inputs (dropped from a broad selection)
 
     @property
     def sources(self) -> list[str]:
@@ -54,8 +63,27 @@ def select_fields(cfg: ProjectConfig, groups: list[str] | None, fields: list[str
     return [f for f in cfg.fields if (f.group, f.name) in chosen]  # keep config order
 
 
-def build_plan(cfg: ProjectConfig, groups: list[str] | None = None, fields: list[str] | None = None) -> Plan:
+def build_plan(
+    cfg: ProjectConfig,
+    groups: list[str] | None = None,
+    fields: list[str] | None = None,
+    available: set[str] | None = None,
+) -> Plan:
+    """``available`` = request inputs supplied by the caller (default: all declared).
+
+    Fields whose sources need an input that was not supplied are *dropped and reported* when they
+    were selected broadly (no selection / by group) -- but are an error when named explicitly in
+    ``fields``, and also when nothing servable remains. Never a silent gap.
+    """
     selected = select_fields(cfg, groups, fields)
+    available = set(cfg.input_names()) if available is None else available
+    missing = {f"{f.group}.{f.name}": sorted(source_inputs(cfg, f.source) - available) for f in selected}
+    missing = {k: v for k, v in missing.items() if v}
+    if missing:
+        explicit = {f"{f.group}.{f.name}" for f in select_fields(cfg, None, fields)} if fields else set()
+        if (explicit & set(missing)) or len(missing) == len(selected):
+            raise MissingInputsError(missing)
+        selected = [f for f in selected if f"{f.group}.{f.name}" not in missing]
 
     needed: set[str] = set()
     stack = [f.source for f in selected]
@@ -86,4 +114,4 @@ def build_plan(cfg: ProjectConfig, groups: list[str] | None = None, fields: list
     for f in selected:
         if f.group not in present_groups:
             present_groups.append(f.group)
-    return Plan(groups=present_groups, fields=selected, levels=levels)
+    return Plan(groups=present_groups, fields=selected, levels=levels, skipped=missing)

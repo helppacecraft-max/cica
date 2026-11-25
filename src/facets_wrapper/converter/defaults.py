@@ -18,6 +18,9 @@ DEFAULT_SETTINGS: dict = {
         {"after": "Lines", "param": "line_no"},
         {"after": "Coverage", "param": "subscriber_key"},
     ],
+    # ADDED to path_param_rules (additive, so the defaults above are never lost). Example for an
+    # associate-based endpoint:  [{"after": "Associates", "param": "associate_id"}]
+    "extra_path_param_rules": [],
     # Section banner (lower-cased) -> group name. Unlisted banners are slugified.
     "group_aliases": {
         "claim level data": "claim",

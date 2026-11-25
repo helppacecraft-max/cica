@@ -41,8 +41,9 @@ def runtime(handler, cfg=CFG, **env):
 
 
 def run(rt, **kw):
-    kw.setdefault("claim_id", "C1")
-    return asyncio.run(rt.enrich(**kw))
+    inputs = kw.pop("inputs", None) or {"claim_id": kw.pop("claim_id", "C1")}
+    kw.pop("claim_id", None)
+    return asyncio.run(rt.enrich(inputs, **kw))
 
 
 def ok(body):

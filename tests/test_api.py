@@ -20,7 +20,7 @@ def test_enrich_full_claim(client):
     r = post(client, include_provenance=True)
     assert r.status_code == 200
     b = r.json()
-    assert b["complete"] is True and b["claim_id"] == "CLAIM000001"
+    assert b["complete"] is True and b["inputs"] == {"claim_id": "CLAIM000001"}
     # claim_inquiry survives only with 'paid_amount' (the other rows pointed at a UI URL and were skipped)
     assert set(b["data"]) == {"claim", "line", "matchum", "claim_inquiry"}
     assert list(b["data"]["claim_inquiry"]) == ["paid_amount"]

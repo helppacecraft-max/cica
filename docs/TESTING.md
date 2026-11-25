@@ -5,7 +5,7 @@ Four levels, cheapest first. **Levels 1–3 prove the software works. Only level
 
 | Level | Needs Facets? | Proves | Time |
 |---|---|---|---|
-| 1. Automated suite | no | engine, converter, API behave as designed (117 tests) | 10 s |
+| 1. Automated suite | no | engine, converter, API behave as designed (148 tests) | 10 s |
 | 2. `selftest` | no | whole pipeline works on sample data | 5 s |
 | 3. Manual run vs mock Facets | no | you can operate it; failure behaviour visible | 15 min |
 | 4. Verify against real Facets | **yes** | **field paths and values are correct** | your sign-off |
@@ -42,7 +42,7 @@ planner (minimum calls, ordering); executor (retries, 404 vs 5xx, partial line f
 path-injection attempts, response_root, discovery modes); API (strict mode, auth, multi-project,
 readiness, reload keeps old config on bad new one); contract-test and `validate --samples`.
 
-All green ⇒ exit code 0 and `117 passed` (the number grows as tests are added).
+All green ⇒ exit code 0 and `148 passed` (the number grows as tests are added).
 
 ## 2. `selftest`
 
@@ -78,6 +78,7 @@ PowerShell:
 $env:FACETS_DEMO_BASE_URL = "http://127.0.0.1:9000"
 facets-wrapper serve --config-dir work/configs --port 8000
 ```
+Ask the service what a project accepts: `GET /v1/catalog` → `request.inputs` (name / required / pattern / label).
 Check `http://127.0.0.1:8000/readyz` → `{"ready":true,...}` and browse `http://127.0.0.1:8000/docs`.
 
 **Call it** — bash:
@@ -102,7 +103,8 @@ Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/v1/claims/enrich -Cont
 | `ERROR500XX` | every endpoint 500 | `complete:false`, `errors[]` has `http_500` (after 3 attempts), dependents `dependency_…_unavailable`; add `"strict":true` ⇒ **HTTP 502** |
 | `BADJSON01` | HTTP 200, HTML body | `errors[]` code `invalid_json` |
 | `NOLINES01` | Summary says 3 lines, each line 404 | 3 rows with `source_not_found` statuses (explicit, not silently empty) |
-| `bad id!` / `../etc` | — | HTTP **422** `invalid_claim_id`, no upstream call made |
+| `bad id!` / `../etc` / `"ABC123\n"` | — | HTTP **422** `invalid_inputs` with `"invalid":["claim_id"]` (the value is never echoed), no upstream call made |
+| `{"claim_id":"CLAIM000001","member_id":"1"}` | — | HTTP **422** `invalid_inputs` with `"unknown":["member_id"]` and the list of `declared_inputs` |
 | `"groups":["nope"]` | — | HTTP 422 `invalid_selection` naming the unknown group |
 
 Also try: stop the mock, call again → `errors[]` `connect_error:…` after retries; set
@@ -150,7 +152,7 @@ Exit code 1 if any **required** field fails (`--strict`: also optional failures 
 
 ```
 cases/emblem/<case_name>/
-    case.json          {"claim_id": "…"}                 (optional "groups"/"fields")
+    case.json          {"inputs": {"claim_id": "…", "associate_id": "…"}}     (optional "groups"/"fields"; legacy {"claim_id": "…"} works)
     responses/         the files from 4.2 (404 is simulated for sources without a file)
     expected.json      what the business says the answer is
 ```

@@ -71,3 +71,12 @@ def test_cli_contract_exit_codes(cases, converted, capsys):
     assert main(["contract-test", "--config", cfg, "--cases", str(cases), "--update"]) == 0
     assert main(["contract-test", "--config", cfg, "--cases", str(cases)]) == 0
     assert "1/1 cases passed" in capsys.readouterr().out
+
+
+def test_case_json_accepts_inputs_form_and_rejects_invalid_inputs(cases, demo_cfg):
+    case = cases / "happy" / "case.json"
+    case.write_text(json.dumps({"inputs": {"claim_id": "CLAIM000001"}}))
+    assert all(r.updated for r in run_cases(demo_cfg, cases, update=True))
+    case.write_text(json.dumps({"inputs": {"claim_id": "bad id!"}}))
+    res = run_cases(demo_cfg, cases)
+    assert not res[0].passed and "invalid" in res[0].problems[0]

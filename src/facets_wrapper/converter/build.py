@@ -35,7 +35,7 @@ from .normalize import (
 )
 
 ALLOWED_OVERRIDE_KEYS = {"settings", "project", "source_aliases", "sources", "fields", "add_fields"}
-ALLOWED_PROJECT_KEYS = {"version", "claim_id_pattern", "null_values"}
+ALLOWED_PROJECT_KEYS = {"version", "claim_id_pattern", "null_values", "request"}
 SEVERITIES = ("action", "error", "warn", "info")
 
 
@@ -102,6 +102,8 @@ def _sha256(path: str | Path) -> str:
 def convert(excel_path: str | Path, project: str, overrides_path: str | Path | None = None, sheet: str | None = None) -> ConversionResult:
     ov = load_overrides(overrides_path)
     S = {**DEFAULT_SETTINGS, **ov.get("settings", {})}
+    # extra rules are ADDITIVE so adding e.g. Associates never silently drops the Claims/Lines defaults
+    S["path_param_rules"] = [*S["path_param_rules"], *S.get("extra_path_param_rules", [])]
     na_values = {v.lower() for v in S["not_applicable_values"]}
     required_values = {v.lower() for v in S["required_values"]}
     id_patterns = [re.compile(p, re.I) for p in S["string_api_field_patterns"]]
@@ -170,6 +172,13 @@ def convert(excel_path: str | Path, project: str, overrides_path: str | Path | N
                         f"URL uses placeholder {i.bracket_placeholder} where the sheet elsewhere says the key is the "
                         "subscriber key; mapped to {subscriber_key} -- confirm which ID the endpoint really takes",
                         row.row, sec.title))
+            for i in rest:  # an ID-looking segment no path_param_rule caught would leak into the config
+                for seg in i.template.split("/"):
+                    if re.search(r"\d", seg) and not re.fullmatch(r"v\d+", seg, re.I) and not seg.startswith("{"):
+                        issues.append(Issue("LITERAL_ID_IN_PATH", "warn",
+                            f"path segment {seg!r} looks like a hard-coded ID that no path_param_rule replaced; it was "
+                            "kept in the source path. Add settings.extra_path_param_rules "
+                            "(e.g. [{after: Associates, param: associate_id}]) and declare the input", row.row, sec.title))
             primary = rest[-1]
             prereqs = [i.template for i in rest[:-1] if i.template != primary.template]
             if len(rest) > 1:
@@ -299,13 +308,16 @@ def convert(excel_path: str | Path, project: str, overrides_path: str | Path | N
             issues.append(Issue("DISCOVERY_DEFAULT", "warn",
                 f"source {name!r}: line numbers are discovered by probing 1,2,3... until the first 404 (max 50). "
                 "If the claim response exposes the lines, set sources." + name + ".foreach.discovery in overrides."))
-        bound = {"claim_id"} | set(sc.get("params", {})) | ({fe["param"]} if fe else set())
+        inputs_declared = {i["name"] for i in config.get("request", {}).get("inputs", [{"name": "claim_id"}])}
+        bound = inputs_declared | set(sc.get("params", {})) | ({fe["param"]} if fe else set())
         for ph in placeholders(sc["path"]):
             if ph not in bound:
                 prereq = next((names[p] for p in srcs.get(sc["path"].lower(), {}).get("prereq", []) if p in names), None)
                 src_guess = prereq or "<source_that_returns_it>"
                 issues.append(Issue("UNBOUND_PARAM", "action",
-                    f"source {name!r} needs {{{ph}}} from another response. Add to overrides:\n"
+                    f"source {name!r} needs {{{ph}}}. EITHER it is a request input the caller sends -- add to overrides:\n"
+                    f"    project:\n      request:\n        inputs:\n          - {{name: claim_id}}\n          - {{name: {ph}, pattern: \"^[0-9]+$\"}}\n"
+                    f"OR it comes from another response -- add to overrides:\n"
                     f"    sources:\n      {name}:\n        params:\n          {ph}: {{from_source: {src_guess}, path: \"$.<JSONPath>\"}}"))
 
     by_group: dict[str, list[dict]] = {}

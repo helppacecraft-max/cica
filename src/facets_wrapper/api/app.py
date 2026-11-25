@@ -14,7 +14,8 @@ from fastapi.responses import JSONResponse
 
 from .. import __version__
 from ..config.loader import ConfigError, load_config_dir, load_plugins
-from ..engine.planner import SelectionError
+from ..config.validate import effective_pattern
+from ..engine.planner import MissingInputsError, SelectionError
 from ..engine.runtime import ProjectRuntime
 from ..settings import load_project_env
 from .schemas import EnrichRequest, EnrichResponse
@@ -105,6 +106,14 @@ def create_app(
         return {
             "project": cfg.project,
             "config_version": cfg.version,
+            "request": {
+                "inputs": [
+                    {"name": i.name, "required": i.required, "label": i.label, "pattern": effective_pattern(cfg, i)}
+                    for i in cfg.request.inputs
+                ],
+                "at_least_one_of": cfg.request.at_least_one_of,
+                "controls": ["groups", "fields", "strict", "include_provenance"],
+            },
             "groups": {
                 g: {
                     "cardinality": "array" if cfg.group_is_array(g) else "object",
@@ -129,14 +138,17 @@ def create_app(
         rt = resolve(request, x_project, x_api_key)
         if not rt.ready:
             raise HTTPException(503, {"error": "project_not_ready", "problems": rt.not_ready_reasons})
-        if not rt.claim_re.match(body.claim_id):
-            raise HTTPException(422, {"error": "invalid_claim_id", "detail": f"does not match {rt.cfg.claim_id_pattern}"})
+        inputs, problems = rt.check_inputs(body.model_extra or {})
+        if problems:  # names only -- values are never echoed
+            raise HTTPException(422, {"error": "invalid_inputs", **problems, "declared_inputs": rt.cfg.input_names()})
         try:
             out: dict[str, Any] = await rt.enrich(
-                body.claim_id, body.groups, body.fields, body.include_provenance, x_correlation_id
+                inputs, body.groups, body.fields, body.include_provenance, x_correlation_id
             )
         except SelectionError as e:
             raise HTTPException(422, {"error": "invalid_selection", "unknown_groups": e.unknown_groups, "unknown_fields": e.unknown_fields}) from None
+        except MissingInputsError as e:
+            raise HTTPException(422, {"error": "inputs_missing_for_fields", "fields": e.fields}) from None
         log.info(
             "enrich project=%s cid=%s complete=%s latency_ms=%s sources=%s",
             rt.cfg.project, out["meta"]["correlation_id"], out["complete"], out["meta"]["latency_ms"],

@@ -102,7 +102,9 @@ def create_mock_app(cfg: ProjectConfig, lines: int = 3) -> FastAPI:
         fe = src.foreach
 
         async def handler(**kw):
-            claim = str(kw.get("claim_id", "CLAIM000001"))
+            vals = [str(v) for k, v in kw.items() if not (fe and k == fe.param)]
+            claim = next((v for v in vals if re.match(r"(?i)(NOTFOUND|ERROR500|BADJSON|NOLINES)", v)), None) \
+                or str(kw.get("claim_id") or (vals[0] if vals else "CLAIM000001"))
             if claim.upper().startswith("NOTFOUND"):
                 return JSONResponse({"error": "not found"}, status_code=404)
             if claim.upper().startswith("ERROR500"):

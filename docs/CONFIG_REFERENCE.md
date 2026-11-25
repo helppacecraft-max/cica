@@ -7,7 +7,13 @@ Configs are **YAML**, named `mapping.yml` (`mapping.yaml` also loads). JSON conf
 schema_version: 1
 project: emblem                       # [A-Za-z0-9_-]; selects the FACETS_<PROJECT>_* env vars
 version: 3                            # echoed in every response as meta.config_version
-claim_id_pattern: '^[A-Za-z0-9]{6,20}$'   # claim_id in requests must match
+claim_id_pattern: '^[A-Za-z0-9]{6,20}$'   # default pattern for the input named claim_id
+
+request:                              # OPTIONAL. Omitted => a single required input: claim_id
+  inputs:                             # identifiers the caller sends as flat keys in the body (max 20)
+    - {name: claim_id}                          # required: true by default; pattern defaults to claim_id_pattern
+    - {name: associate_id, pattern: '^[0-9]{1,10}$', required: false, label: Associate ID}
+  at_least_one_of: []                 # e.g. [claim_id, associate_id] => "either ID is enough" (make both required: false)
 null_values: []                       # raw strings treated as null before coercion
 meta: {...}                           # informational (generated_from, source_sha256, ...)
 
@@ -15,7 +21,7 @@ sources:
   claim_summary:                      # name: [a-z][a-z0-9_]*
     path: /RestServices/facets/api/v1/Claims/{claim_id}/Inquiry/Summary   # starts with '/', no host, no '?'
     method: GET                       # only GET
-    query: {}                         # fixed query-string parameters
+    query: {}                         # query-string parameters; values may use {input} placeholders, e.g. {assoc: "{associate_id}"}
     params:                           # fill other placeholders from another source's response
       subscriber_key: {from_source: claim_summary, path: "$.SBSB_ID"}     # source must exist, not be foreach, no cycles
     foreach:                          # call once per item
@@ -48,6 +54,13 @@ fields:
 
 JSONPath is `jsonpath-ng` (extended): `$.A.B`, `$.items[0].id`, `$.items[*].id`, `$.items[?(@.type=='X')].id`.
 A scalar field whose path matches more than one value is an `ambiguous_path` error — use a more specific path or `type: list`.
+
+## Request inputs — rules
+
+* A **source needs an input** if `{name}` appears in its path or query, directly or through a source it depends on. Every declared input must be used by at least one source (an unused one is rejected as a likely typo).
+* Names: `[a-z][a-z0-9_]*`, unique, not `groups`/`fields`/`strict`/`include_provenance`, at most 20. A `params` binding or `foreach.param` cannot reuse an input name.
+* Supplying fewer inputs than declared is fine when they are optional: fields that need a missing input are **dropped and listed in `meta.skipped_fields`** for broad selections, and are a **422** if you ask for them by name.
+* Inputs are strings (JSON numbers are accepted and converted). `null` counts as "not supplied".
 
 ## Type behaviour
 
@@ -93,8 +106,8 @@ Custom: `@register_transform("name", multi=False|True)` in a module listed in `F
 
 | Endpoint | |
 |---|---|
-| `POST /v1/claims/enrich` | body: `claim_id`, `groups?`, `fields?`, `strict?`, `include_provenance?` · headers: `X-Project`, `X-API-Key`, `X-Correlation-ID` |
-| `GET /v1/catalog` | groups, fields (type/required/label/source), sources for the project |
+| `POST /v1/claims/enrich` | body: the project's **inputs** (flat keys, e.g. `claim_id`, `associate_id`) + controls `groups?`, `fields?`, `strict?`, `include_provenance?` · headers: `X-Project`, `X-API-Key`, `X-Correlation-ID` |
+| `GET /v1/catalog` | the project's request inputs (name/required/pattern/label, `at_least_one_of`), groups, fields (type/required/label/source), sources |
 | `GET /v1/projects` | loaded projects |
 | `GET /healthz` · `GET /readyz` | liveness · readiness (503 if any project lacks base URL/credentials) |
 | `POST /admin/reload` | atomic config reload |

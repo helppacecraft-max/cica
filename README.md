@@ -26,7 +26,7 @@ python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\
 pip install -e ".[dev]"
 
 facets-wrapper selftest            # sample sheet -> YAML -> wrapper -> fake Facets, with assertions
-pytest                             # full automated suite (117 tests)
+pytest                             # full automated suite (148 tests)
 ```
 
 Try the real workflow on the built-in sample sheet:
@@ -43,6 +43,18 @@ curl -s localhost:8000/v1/claims/enrich -H 'content-type: application/json' \
      -d '{"claim_id":"CLAIM000001","fields":["claim.provider_name","line.charges"]}'
 ```
 Interactive API docs: <http://localhost:8000/docs>.
+
+### Request format
+
+Flat JSON. **Inputs** are whatever identifiers the project declares in `request.inputs` (default: just
+`claim_id`; e.g. also `associate_id`, up to 20, each with its own pattern / required flag / "at least one of"
+rule). Four **controls** are fixed:
+
+```json
+{ "claim_id": "26A369350300", "associate_id": "4471",
+  "groups": ["claim", "line"], "fields": ["line.charges"], "strict": false, "include_provenance": false }
+```
+`GET /v1/catalog` tells a client exactly what a project accepts. Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) §3, [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md).
 
 ## With your real sheet
 
@@ -83,5 +95,5 @@ src/facets_wrapper/
   api/         app.py  schemas.py                                       FastAPI app
   contract.py  mock_upstream.py  sample/  cli.py  settings.py
 configs/<project>/mapping.yml                                          one directory per project
-tests/                                                                  117 tests
+tests/                                                                   148 tests
 ```
