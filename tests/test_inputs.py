@@ -9,11 +9,11 @@ import pytest
 import yaml
 from fastapi.testclient import TestClient
 
-from facets_wrapper.api.app import create_app
-from facets_wrapper.config.loader import ConfigError, parse_config
-from facets_wrapper.engine.planner import MissingInputsError, build_plan
-from facets_wrapper.engine.runtime import ProjectRuntime
-from facets_wrapper.settings import ProjectEnv
+from api_wrapper.api.app import create_app
+from api_wrapper.config.loader import ConfigError, parse_config
+from api_wrapper.engine.planner import MissingInputsError, build_plan
+from api_wrapper.engine.runtime import ProjectRuntime
+from api_wrapper.settings import ProjectEnv
 
 CFG = {
     "project": "t",
@@ -188,7 +188,7 @@ def api(tmp_path):
     d.mkdir(parents=True)
     (d / "mapping.yml").write_text(yaml.safe_dump(CFG))
     h = lambda req: httpx.Response(200, json={"A": "a", "B": "b", "C": "c"})  # noqa: E731
-    app = create_app(str(tmp_path / "configs"), environ={"FACETS_T_BASE_URL": "http://u"}, transport=httpx.MockTransport(h))
+    app = create_app(str(tmp_path / "configs"), environ={"UPSTREAM_T_BASE_URL": "http://u"}, transport=httpx.MockTransport(h))
     with TestClient(app) as c:
         yield c
 

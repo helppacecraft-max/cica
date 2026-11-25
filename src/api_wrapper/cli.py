@@ -1,11 +1,11 @@
-"""facets-wrapper command line.
+"""api-wrapper command line.
 
   convert        Excel mapping sheet -> <out>/<project>/mapping.yml (+ report.md / report.yml)
   validate       check a config; optionally check every field path against real sample responses
   serve          run the wrapper API
   contract-test  replay recorded real responses, compare with human-verified expected output
-  probe          one real call to Facets: test credentials, see the JSON structure (no values printed)
-  mock-upstream  run a fake Facets generated from a config (for local end-to-end testing)
+  probe          one real call to the upstream: test credentials, see the JSON structure (no values printed)
+  mock-upstream  run a fake upstream generated from a config (for local end-to-end testing)
   sample         write a sample workbook + overrides to try the workflow
   selftest       sample -> convert -> validate -> mock upstream -> wrapper -> assertions, in one command
 """
@@ -115,7 +115,7 @@ def cmd_serve(a) -> int:
 
     import uvicorn
 
-    logging.basicConfig(level=os.environ.get("FACETS_WRAPPER_LOG_LEVEL", "INFO").upper(),
+    logging.basicConfig(level=os.environ.get("WRAPPER_LOG_LEVEL", "INFO").upper(),
                         format="%(asctime)s %(levelname)s %(name)s %(message)s")
 
     from .api.app import create_app
@@ -149,7 +149,7 @@ def cmd_contract(a) -> int:
         for pr in r.problems[:20]:
             _p(f"      {pr}")
     if a.update:
-        _p("expected.json files were overwritten with CURRENT output -- verify them against Facets before trusting them")
+        _p("expected.json files were overwritten with CURRENT output -- verify them against the source system before trusting them")
         return 0
     bad = sum(not r.passed for r in results)
     _p(f"\n{len(results) - bad}/{len(results)} cases passed")
@@ -178,7 +178,7 @@ def cmd_mock(a) -> int:
         _p(f"ERROR: {e}")
         return 1
     app = create_mock_app(cfg, a.lines, req_h, req_q)
-    _p(f"Mock Facets for '{cfg.project}' on http://{a.host}:{a.port}  (lines per claim: {a.lines})")
+    _p(f"Mock upstream for '{cfg.project}' on http://{a.host}:{a.port}  (lines per claim: {a.lines})")
     if req_h or req_q:
         _p(f"Requires credentials: headers {sorted(req_h)} query {sorted(req_q)} (values not shown) -> otherwise 401")
     _p("Magic claim IDs: NOTFOUND* -> 404, ERROR500* -> 500, BADJSON* -> non-JSON, NOLINES* -> no line items")
@@ -191,7 +191,7 @@ def cmd_sample(a) -> int:
 
     x, o = write_sample(a.dir)
     _p(f"wrote {x}\nwrote {o}")
-    _p(f"try:  facets-wrapper convert --excel {x} --project demo --overrides {o} --out {Path(a.dir) / 'configs'}")
+    _p(f"try:  api-wrapper convert --excel {x} --project demo --overrides {o} --out {Path(a.dir) / 'configs'}")
     return 0
 
 
@@ -228,7 +228,7 @@ def cmd_selftest(a) -> int:
         _p("4. wrapper -> mock upstream, end to end")
         mock = create_mock_app(cfg, lines=3)
         transport = httpx.ASGITransport(app=mock)
-        app = create_app(str(td / "configs"), environ={"FACETS_DEMO_BASE_URL": "http://mock"}, transport=transport)
+        app = create_app(str(td / "configs"), environ={"UPSTREAM_DEMO_BASE_URL": "http://mock"}, transport=transport)
         with TestClient(app) as c:
             r = c.post("/v1/claims/enrich", json={"claim_id": "CLAIM000001", "include_provenance": True})
             body = r.json()
@@ -253,7 +253,7 @@ def cmd_selftest(a) -> int:
 
 # ---------------------------------------------------------------------------------------
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(prog="facets-wrapper", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(prog="api-wrapper", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     c = sub.add_parser("convert", help="Excel -> YAML config")
@@ -273,7 +273,7 @@ def main(argv: list[str] | None = None) -> int:
     v.set_defaults(fn=cmd_validate)
 
     s = sub.add_parser("serve", help="run the wrapper API")
-    s.add_argument("--config-dir", help="default: $FACETS_WRAPPER_CONFIG_DIR or ./configs")
+    s.add_argument("--config-dir", help="default: $WRAPPER_CONFIG_DIR or ./configs")
     s.add_argument("--host", default="127.0.0.1")
     s.add_argument("--port", type=int, default=8000)
     s.set_defaults(fn=cmd_serve)
@@ -285,13 +285,13 @@ def main(argv: list[str] | None = None) -> int:
     ct.add_argument("--plugins")
     ct.set_defaults(fn=cmd_contract)
 
-    pr = sub.add_parser("probe", help="ONE real call to Facets: tests credentials, shows JSON structure (no values)")
-    pr.add_argument("--project", required=True, help="project name (selects the FACETS_<PROJECT>_* env vars)")
-    pr.add_argument("--path", required=True, help="e.g. /RestServices/facets/api/v1/Claims/<ID>/Inquiry/Summary")
+    pr = sub.add_parser("probe", help="ONE real call to the upstream: tests credentials, shows JSON structure (no values)")
+    pr.add_argument("--project", required=True, help="project name (selects the UPSTREAM_<PROJECT>_* env vars)")
+    pr.add_argument("--path", required=True, help="e.g. /RestServices/core/api/v1/Claims/<ID>/Inquiry/Summary")
     pr.add_argument("--save", help="also save the RAW response here (real data!) for validate --samples / contract-test")
     pr.set_defaults(fn=cmd_probe)
 
-    m = sub.add_parser("mock-upstream", help="fake Facets generated from a config")
+    m = sub.add_parser("mock-upstream", help="fake upstream generated from a config")
     m.add_argument("--config", required=True)
     m.add_argument("--host", default="127.0.0.1")
     m.add_argument("--port", type=int, default=9000)

@@ -16,7 +16,7 @@ from .client import HttpResult, UpstreamClient
 from .extract import find
 from .planner import Plan
 
-log = logging.getLogger("facets_wrapper.executor")
+log = logging.getLogger("api_wrapper.executor")
 
 _SAFE_PARAM = re.compile(r"^[A-Za-z0-9_.\-]{1,64}$")
 

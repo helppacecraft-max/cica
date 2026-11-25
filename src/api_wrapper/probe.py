@@ -1,7 +1,7 @@
-"""`facets-wrapper probe`: make ONE real GET to Facets with the project's configured credentials and
+"""`api-wrapper probe`: make ONE real GET to the upstream with the project's configured credentials and
 report what came back -- without ever printing a value.
 
-Use it to (1) find out which authentication Facets accepts, (2) see the JSON structure (key names,
+Use it to (1) find out which authentication the upstream accepts, (2) see the JSON structure (key names,
 types) so you can set ``path_template`` / ``response_root`` correctly, (3) optionally save the raw
 response as a sample for ``validate --samples`` / ``contract-test`` (``--save`` writes REAL DATA to disk).
 """
@@ -54,7 +54,7 @@ def run_probe(
             out(f"  - {p}")
         return 1
     if not path.startswith("/") or "://" in path:
-        out("--path must be a path starting with '/', e.g. /RestServices/facets/api/v1/Claims/<ID>/Inquiry/Summary")
+        out("--path must be a path starting with '/', e.g. /RestServices/core/api/v1/Claims/<ID>/Inquiry/Summary")
         return 1
 
     auth, headers, params = build_auth(env)
@@ -70,7 +70,7 @@ def run_probe(
         out("RESULT: timeout -- host reachable? firewall / VPN / wrong port?")
         return 1
     except httpx.TransportError as e:
-        out(f"RESULT: connection error ({type(e).__name__}) -- wrong host/port, TLS problem (see FACETS_<P>_CA_BUNDLE), or VPN?")
+        out(f"RESULT: connection error ({type(e).__name__}) -- wrong host/port, TLS problem (see UPSTREAM_<P>_CA_BUNDLE), or VPN?")
         return 1
     ms = int((time.perf_counter() - t0) * 1000)
     out(f"HTTP {r.status_code} in {ms} ms   content-type: {r.headers.get('content-type', '-')}")
@@ -79,9 +79,9 @@ def run_probe(
         wa = r.headers.get("www-authenticate")
         out(f"RESULT: credentials rejected.{'  Server says www-authenticate: ' + wa if wa else ''}")
         out("  Hints: 'Basic' -> AUTH=basic | 'Bearer' -> AUTH=bearer | an 'X-...-Key' header name in the docs/Postman -> AUTH=header "
-            "with FACETS_<P>_AUTH_HEADER_NAME. Compare with a request that works in Postman/browser dev tools (Headers tab).")
+            "with UPSTREAM_<P>_AUTH_HEADER_NAME. Compare with a request that works in Postman/browser dev tools (Headers tab).")
         out("  403 with valid credentials can also mean the account lacks permission for this endpoint, or a required extra header "
-            "(e.g. tenant/application id) is missing -> FACETS_<P>_HEADERS.")
+            "(e.g. tenant/application id) is missing -> UPSTREAM_<P>_HEADERS.")
         return 1
     if r.status_code == 404:
         out("RESULT: authenticated OK (or auth not enforced) but this path/ID does not exist -- check the path and claim ID.")

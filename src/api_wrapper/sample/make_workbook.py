@@ -1,6 +1,6 @@
 """Generate a SAMPLE mapping workbook with the same layout as the real sheet.
 
-Everything here is fictional (host ``facets.example.com``, claim IDs ``00A0000001xx``). It also
+Everything here is fictional (host ``upstream.example.com``, claim IDs ``00A0000001xx``). It also
 deliberately reproduces the *kinds* of defects found in the real sheet, so the converter's
 warnings can be seen working: fill-down URLs, a UI URL, an NA row, a duplicate mapping, a
 multi-URL cell, a bracket placeholder, Numeric IDs, a mixed per-line/claim-level group, ...
@@ -13,8 +13,8 @@ from pathlib import Path
 import openpyxl
 from openpyxl.worksheet.hyperlink import Hyperlink
 
-H = "https://facets.example.com:10408"
-API = "/RestServices/facets/api/v1"
+H = "https://upstream.example.com:10408"
+API = "/RestServices/core/api/v1"
 SUMMARY = f"{H}/{API.lstrip('/')}/Claims/00A000000100/Inquiry/Summary/"
 SUMMARY_DS = f"{H}//{API.lstrip('/')}/Claims/00A000000100/Inquiry/Summary/"  # double slash, as in the real sheet
 LINES = f"{H}{API}/Claims/00A000000200/Inquiry/Lines/1/Details"
@@ -24,10 +24,10 @@ FAMILY_FIXED = f"{H}{API}/Family/Coverage/351550/Inquiry/"
 FAMILY_BRACKET = f"{H}//{API.lstrip('/')}/family/coverage/[clcl_id]/Inquiry"
 UI = f"{H}/?AdvancedSearch=N&ClaimType=M&ClaimId=00A0000002"
 
-HEADER = ["Field Name", "Data Type", "Default Value", "Facets Table", "Facets Column",
+HEADER = ["Field Name", "Data Type", "Default Value", "Source Table", "Source Column",
           "Field Name", "API Field name", "URL", "Comments"]
 
-# (web name, type, default, facets table, facets column, rest name, api field, url cell)
+# (web name, type, default, source table, source column, rest name, api field, url cell)
 CLAIM = [
     ("Claim Id", "Alphanumeric", "Mandatory", "CMC_CLCL_CLAIM", "CLCL_ID", "Claim Id", "CLCL_ID", SUMMARY_DS),
     ("Provider Name", "String", "Mandatory", "CMC_PRPR_PROV", "PRPR_NAME", "Provider Name", "PRPR_NAME", SUMMARY_DS),

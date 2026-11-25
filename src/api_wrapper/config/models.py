@@ -64,7 +64,7 @@ class FieldConfig(_Strict):
     transform: str | None = None
     date_formats: list[str] = Field(default_factory=list)
     label: str | None = None
-    facets: dict[str, str] | None = None
+    backend: dict[str, str] | None = None
     notes: str | None = None
     origin: dict[str, Any] = Field(default_factory=dict)  # informational only
 

@@ -3,11 +3,11 @@ from __future__ import annotations
 import openpyxl
 import pytest
 
-from facets_wrapper.config.loader import load_project_file
-from facets_wrapper.converter.build import convert, write_outputs
-from facets_wrapper.converter.excel_reader import ConversionError, read_sections
-from facets_wrapper.converter.normalize import parse_api_field, parse_url, source_name
-from facets_wrapper.converter.defaults import DEFAULT_SETTINGS
+from api_wrapper.config.loader import load_project_file
+from api_wrapper.converter.build import convert, write_outputs
+from api_wrapper.converter.excel_reader import ConversionError, read_sections
+from api_wrapper.converter.normalize import parse_api_field, parse_url, source_name
+from api_wrapper.converter.defaults import DEFAULT_SETTINGS
 
 
 def codes(res):
@@ -29,7 +29,7 @@ def test_missing_header_is_a_clear_error(tmp_path):
     wb = openpyxl.Workbook()
     wb.active["A1"] = "nothing useful"
     wb.save(tmp_path / "x.xlsx")
-    with pytest.raises(ConversionError, match="Facets Table"):
+    with pytest.raises(ConversionError, match="Table"):
         read_sections(tmp_path / "x.xlsx")
 
 
@@ -44,7 +44,7 @@ def test_hyperlink_target_is_used_when_cell_text_has_no_url(tmp_path, sample_dir
     # find the 'Provider Name' row, replace its URL text, keep a real hyperlink
     r = next(r for r in range(1, ws.max_row + 1) if ws.cell(r, 6).value == "Provider Name")
     ws.cell(r, 8).value = "click here"
-    ws.cell(r, 8).hyperlink = "https://h.example:1/RestServices/facets/api/v1/Claims/ZZ1/Inquiry/Summary/"
+    ws.cell(r, 8).hyperlink = "https://h.example:1/RestServices/core/api/v1/Claims/ZZ1/Inquiry/Summary/"
     wb.save(tmp_path / "h.xlsx")
     res = convert(tmp_path / "h.xlsx", "demo")
     assert field(res, "claim", "provider_name")["source"] == "claims_inquiry_summary"
@@ -56,9 +56,9 @@ RX = DEFAULT_SETTINGS["rest_path_regex"]
 
 
 def test_url_templating_and_host_dropped():
-    u = parse_url("https://internal.corp:10408//RestServices/facets/api/v1/Claims/26A369350300/Inquiry/Lines/1/Details", RX, RULES)
+    u = parse_url("https://internal.corp:10408//RestServices/core/api/v1/Claims/26A369350300/Inquiry/Lines/1/Details", RX, RULES)
     assert u.kind == "rest" and u.double_slash
-    assert u.template == "/RestServices/facets/api/v1/Claims/{claim_id}/Inquiry/Lines/{line_no}/Details"
+    assert u.template == "/RestServices/core/api/v1/Claims/{claim_id}/Inquiry/Lines/{line_no}/Details"
     assert "26A369350300" not in u.template and "internal.corp" not in u.template
 
 
@@ -68,7 +68,7 @@ def test_ui_url_and_bare_host_are_not_rest():
 
 
 def test_bracket_placeholder_flagged():
-    u = parse_url("https://h:1/RestServices/facets/api/v1/family/coverage/[clcl_id]/Inquiry", RX, RULES)
+    u = parse_url("https://h:1/RestServices/core/api/v1/family/coverage/[clcl_id]/Inquiry", RX, RULES)
     assert u.bracket_placeholder == "[clcl_id]" and "{subscriber_key}" in u.template
 
 
@@ -82,7 +82,7 @@ def test_api_field_parsing():
 
 
 def test_source_name():
-    assert source_name("/RestServices/facets/api/v1/Claims/{claim_id}/Inquiry/Summary") == "claims_inquiry_summary"
+    assert source_name("/RestServices/core/api/v1/Claims/{claim_id}/Inquiry/Summary") == "claims_inquiry_summary"
 
 
 # ---- conversion ----------------------------------------------------------------------
@@ -131,7 +131,7 @@ def test_last_url_in_multi_url_cell_is_the_source(converted):
 def test_no_environment_data_leaks_into_config(converted):
     _, _, path = converted
     text = path.read_text()
-    for needle in ("facets.example.com", "10408", "10418", "00A0000001", "00A0000002", "00A0000003", "351550"):
+    for needle in ("upstream.example.com", "10408", "10418", "00A0000001", "00A0000002", "00A0000003", "351550"):
         assert needle not in text, needle
 
 
@@ -149,7 +149,7 @@ def test_output_is_yml_only_and_has_no_json_artifacts(sample_dir, tmp_path):
 
 
 def test_loader_ignores_json_config(tmp_path):
-    from facets_wrapper.config.loader import find_config_files
+    from api_wrapper.config.loader import find_config_files
     (tmp_path / "p").mkdir()
     (tmp_path / "p" / "mapping.json").write_text("{}")
     assert find_config_files(tmp_path) == []

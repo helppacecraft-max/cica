@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import pytest
 
-from facets_wrapper.config.models import FieldConfig
-from facets_wrapper.engine.coerce import CoercionError, coerce
-from facets_wrapper.engine.extract import extract_field
+from api_wrapper.config.models import FieldConfig
+from api_wrapper.engine.coerce import CoercionError, coerce
+from api_wrapper.engine.extract import extract_field
 
 
 def F(**kw):

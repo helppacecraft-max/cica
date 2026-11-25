@@ -20,7 +20,7 @@ from ..engine.runtime import ProjectRuntime
 from ..settings import load_project_env
 from .schemas import EnrichRequest, EnrichResponse
 
-log = logging.getLogger("facets_wrapper.api")
+log = logging.getLogger("api_wrapper.api")
 
 
 def _build_registry(config_dir: str, environ: dict[str, str], transport) -> dict[str, ProjectRuntime]:
@@ -31,7 +31,7 @@ def _build_registry(config_dir: str, environ: dict[str, str], transport) -> dict
         if not rt.ready:
             log.error("project %s is NOT READY: %s", name, "; ".join(rt.not_ready_reasons))
         if rt.env.api_key is None:
-            log.warning("project %s has no FACETS_WRAPPER_API_KEY_%s set: its API is unauthenticated", name, name.upper())
+            log.warning("project %s has no WRAPPER_API_KEY_%s set: its API is unauthenticated", name, name.upper())
         reg[name] = rt
     return reg
 
@@ -43,8 +43,8 @@ def create_app(
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> FastAPI:
     env = dict(os.environ if environ is None else environ)
-    cdir = config_dir or env.get("FACETS_WRAPPER_CONFIG_DIR", "configs")
-    load_plugins(env.get("FACETS_WRAPPER_PLUGINS"))
+    cdir = config_dir or env.get("WRAPPER_CONFIG_DIR", "configs")
+    load_plugins(env.get("WRAPPER_PLUGINS"))
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -55,9 +55,9 @@ def create_app(
             await rt.aclose()
 
     app = FastAPI(
-        title="Facets wrapper API",
+        title="API wrapper",
         version=__version__,
-        description="Config-driven aggregation of Facets REST services. See docs/ARCHITECTURE.md.",
+        description="Config-driven aggregation of upstream REST services. See docs/ARCHITECTURE.md.",
         lifespan=lifespan,
     )
 
@@ -159,9 +159,9 @@ def create_app(
 
     @app.post("/admin/reload", tags=["ops"])
     async def reload(request: Request, x_admin_key: str | None = Header(None)):
-        key = env.get("FACETS_WRAPPER_ADMIN_KEY")
+        key = env.get("WRAPPER_ADMIN_KEY")
         if not key:
-            raise HTTPException(404, "reload disabled (FACETS_WRAPPER_ADMIN_KEY not set)")
+            raise HTTPException(404, "reload disabled (WRAPPER_ADMIN_KEY not set)")
         if not (x_admin_key and hmac.compare_digest(x_admin_key, key)):
             raise HTTPException(401, {"error": "invalid_admin_key"})
         try:

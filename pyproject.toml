@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "facets-wrapper"
+name = "api-wrapper"
 version = "0.1.0"
-description = "Config-driven FastAPI wrapper over Facets REST services, generated from an Excel mapping sheet"
+description = "Config-driven FastAPI wrapper over upstream REST services, generated from an Excel mapping sheet"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -22,7 +22,7 @@ dependencies = [
 dev = ["pytest>=7"]
 
 [project.scripts]
-facets-wrapper = "facets_wrapper.cli:main"
+api-wrapper = "api_wrapper.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

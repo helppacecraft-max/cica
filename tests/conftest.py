@@ -3,11 +3,11 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from facets_wrapper.api.app import create_app
-from facets_wrapper.config.loader import load_project_file
-from facets_wrapper.converter.build import convert, write_outputs
-from facets_wrapper.mock_upstream import create_mock_app
-from facets_wrapper.sample.make_workbook import write_sample
+from api_wrapper.api.app import create_app
+from api_wrapper.config.loader import load_project_file
+from api_wrapper.converter.build import convert, write_outputs
+from api_wrapper.mock_upstream import create_mock_app
+from api_wrapper.sample.make_workbook import write_sample
 
 
 @pytest.fixture(scope="session")
@@ -36,6 +36,6 @@ def client(converted, demo_cfg):
     from fastapi.testclient import TestClient
 
     transport = httpx.ASGITransport(app=create_mock_app(demo_cfg, lines=3))
-    app = create_app(str(converted[1]), environ={"FACETS_DEMO_BASE_URL": "http://mock"}, transport=transport)
+    app = create_app(str(converted[1]), environ={"UPSTREAM_DEMO_BASE_URL": "http://mock"}, transport=transport)
     with TestClient(app) as c:
         yield c

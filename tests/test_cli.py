@@ -4,7 +4,7 @@ import json
 
 import yaml
 
-from facets_wrapper.cli import main
+from api_wrapper.cli import main
 
 
 def test_selftest_passes(capsys):

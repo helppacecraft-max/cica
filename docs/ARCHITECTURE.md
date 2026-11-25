@@ -9,18 +9,18 @@
  │ mapping    ├─▶│ .yml (hand   ├──▶│  sources:  endpoints   ├──▶│  Planner → Executor → Extract  │
  │ sheet      │  │ decisions)   │   │  fields:   field↔path  │   │  → Coerce → Assemble           │
  └────────────┘  └──────────────┘   └────────────────────────┘   └───────────────┬───────────────┘
-       converter (facets-wrapper convert)            + report.md                  │ GET (parallel)
+       converter (api-wrapper convert)            + report.md                  │ GET (parallel)
                                                                                   ▼
-                                                                      Facets REST endpoints
+                                                                      upstream REST endpoints
 ```
 
-The code contains **no** Facets knowledge. Everything project-specific is in `mapping.yml`.
+The code contains **no** upstream-specific knowledge. Everything project-specific is in `mapping.yml`.
 
 ## 2. Vocabulary
 
 | Term | Meaning |
 |---|---|
-| **source** | One distinct Facets REST endpoint (URL template), e.g. `/Claims/{claim_id}/Inquiry/Summary` |
+| **source** | One distinct upstream REST endpoint (URL template), e.g. `/Claims/{claim_id}/Inquiry/Summary` |
 | **field** | One business field: which source, which JSONPath(s), type, required flag, optional transform |
 | **group** | A section of the sheet (`claim`, `line`, `matchum`, …). Output is grouped the same way |
 | **foreach source** | A source called once per item — e.g. once per claim line (`/Lines/{line_no}/Details`) |
@@ -100,14 +100,14 @@ Error codes: `http_NNN`, `timeout`, `connect_error:<Type>`, `invalid_json`, `res
 
 ### Rules worth knowing
 
-* **Money is a string** (`"125.00"`) via `Decimal`; never a float. IDs, Tax ID, NPI, phone, zip are strings (leading zeros survive). Strings are trimmed (Facets CHAR padding).
+* **Money is a string** (`"125.00"`) via `Decimal`; never a float. IDs, Tax ID, NPI, phone, zip are strings (leading zeros survive). Strings are trimmed (fixed-width CHAR padding from the database).
 * **Empty string = null.** `0` and `false` are values.
 * **Per-line groups**: one row per discovered item, in ascending order, row key = the foreach param (`line_no`). If a group mixes per-line and claim-level fields (the sample’s `matchum.units`), the claim-level value is **repeated on every row** — the converter flags this (`MIXED_CARDINALITY_GROUP`) because it may not be what the business means.
 * **404 on an optional source** (a claim with no COB) is not an error; **404 on a source holding a required field** makes `complete:false` through `required_failures`.
 
 ## 5. Module map
 
-| Module | Responsibility | Knows about Facets? |
+| Module | Responsibility | Knows about the upstream? |
 |---|---|---|
 | `converter/excel_reader.py` | find header rows/columns/banners by label; read rows + hyperlinks | sheet layout only |
 | `converter/normalize.py` | URL → template, API-field parsing, type map, slugs | URL conventions (configurable) |
@@ -118,26 +118,26 @@ Error codes: `http_NNN`, `timeout`, `connect_error:<Type>`, `invalid_json`, `res
 | `engine/*` | plan → execute → extract → coerce → assemble | **no** |
 | `api/app.py` | routes, auth, project resolution, reload | no |
 | `contract.py` | replay recorded responses vs `expected.json` | no |
-| `mock_upstream.py` | fake Facets generated from a config | no |
+| `mock_upstream.py` | fake upstream generated from a config | no |
 
 ## 6. Multi-project
 
 `configs/<project>/mapping.yml` — every directory is loaded at startup. Environment-specific
 values (base URL, credentials, TLS, timeouts, API key) come from env vars per project
-(`FACETS_<PROJECT>_BASE_URL`, … see `settings.py`), **never** from the YAML, so one config can run
+(`UPSTREAM_<PROJECT>_BASE_URL`, … see `settings.py`), **never** from the YAML, so one config can run
 in dev/UAT/prod. Hosts, ports and literal claim IDs found in the sheet are deliberately discarded
 by the converter.
 
 Startup is **fail-closed**: if any config is invalid the service refuses to start. `POST /admin/reload`
-(needs `FACETS_WRAPPER_ADMIN_KEY`) re-reads everything atomically and keeps the old configs if the new ones are invalid.
+(needs `WRAPPER_ADMIN_KEY`) re-reads everything atomically and keeps the old configs if the new ones are invalid.
 
 ## 7. Extending
 
 * **New project** – new sheet → `convert` → review report → add overrides → commit `mapping.yml`.
 * **Different JSON shape** – change `settings.path_template` (e.g. `$.data.{api_field_lower}`) or set `sources.<name>.response_root`; no code.
-* **Special value logic** – register a transform in a plugin module and list it in `FACETS_WRAPPER_PLUGINS`:
+* **Special value logic** – register a transform in a plugin module and list it in `WRAPPER_PLUGINS`:
   ```python
-  from facets_wrapper.engine.transforms import register_transform
+  from api_wrapper.engine.transforms import register_transform
   @register_transform("phone_digits")            # single-value; use multi=True for several paths
   def phone_digits(v): return "".join(c for c in str(v) if c.isdigit())
   ```
@@ -149,14 +149,14 @@ Startup is **fail-closed**: if any config is invalid the service refuses to star
 2. **Line discovery defaults to probing** (`Lines/1`, `2`, … until 404, max 50), sequentially. Correct but slow for big claims, and it hits the endpoint once more than needed. If the claim Summary exposes a line count/list, configure `discovery.mode: from_source`.
 3. **Only GET + JSON**; outbound auth = none/basic/bearer/API-key header/query key + extra headers. No token-fetching flows (OAuth client-credentials, login-then-token), no client-certificate mTLS (server-side CA bundle is supported).
 4. **No caching, no batch endpoint, no wrapper-side rate limiting / circuit breaker.** Add at the gateway if needed.
-5. **Facets “null” sentinels** (e.g. a minimum SQL date such as `1753-01-01`) are *not* assumed. If the real data uses them, list them in `project.null_values` via overrides.
-6. **Not yet built:** live-capture of Facets responses (save them yourself and sanitise PHI), metrics/OpenTelemetry, per-caller authorisation beyond one API key per project.
+5. **Upstream “null” sentinels** (e.g. a minimum SQL date such as `1753-01-01`) are *not* assumed. If the real data uses them, list them in `project.null_values` via overrides.
+6. **Not yet built:** live-capture of upstream responses (save them yourself and sanitise PHI), metrics/OpenTelemetry, per-caller authorisation beyond one API key per project.
 7. The Excel reader was developed against the layout visible in four phone photos of the real sheet, **not the file itself**; layout is detected by header labels, but run `convert` and read the report before trusting it.
 
 ## 9. Security & PHI
 
 * No upstream payloads are logged — only correlation ID, project, source names/states, latency. Coercion errors never echo values.
-* **Outbound credentials** (wrapper → Facets): `none` / `basic` / `bearer` / `header` (any name, any API key) / `query`, plus arbitrary extra headers — all from environment variables per project, validated at startup (header-injection checks included), never in YAML, never logged, never in `/readyz` or error bodies. `facets-wrapper probe` tests them with one call and prints structure only. Not yet supported: token-fetch flows (OAuth/login), client-certificate mTLS.
-* Wrapper API (inbound): set `FACETS_WRAPPER_API_KEY_<PROJECT>`; without it the project is open (a warning is logged). Put it behind your gateway/TLS regardless.
+* **Outbound credentials** (wrapper → upstream): `none` / `basic` / `bearer` / `header` (any name, any API key) / `query`, plus arbitrary extra headers — all from environment variables per project, validated at startup (header-injection checks included), never in YAML, never logged, never in `/readyz` or error bodies. `api-wrapper probe` tests them with one call and prints structure only. Not yet supported: token-fetch flows (OAuth/login), client-certificate mTLS.
+* Wrapper API (inbound): set `WRAPPER_API_KEY_<PROJECT>`; without it the project is open (a warning is logged). Put it behind your gateway/TLS regardless.
 * Upstream TLS verification is on by default; `…_VERIFY_TLS=false` exists for lab use only.
 * `.gitignore` excludes `*.xlsx`, `/out`, `/local`, `.env`. Recorded samples/contract cases contain data — **sanitise before committing**.

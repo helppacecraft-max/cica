@@ -4,7 +4,7 @@ import copy
 
 import pytest
 
-from facets_wrapper.config.loader import ConfigError, parse_config
+from api_wrapper.config.loader import ConfigError, parse_config
 
 BASE = {
     "project": "t",

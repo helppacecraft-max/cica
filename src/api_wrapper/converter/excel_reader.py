@@ -4,10 +4,10 @@ Layout the reader recognises (as in the source sheet):
 
     row n-2   <banner>            e.g. "Claim Level Data"            (merged / single cell)
     row n-1   <banner>            e.g. "Web Services" / "REST Services"
-    row n     header row: ... | Facets Table | Facets Column | Field Name | API Field name | URL | Comments
+    row n     header row: ... | <x> Table | <x> Column | Field Name | API Field name | URL | Comments
     row n+1.. data rows
 
-Columns are located from the header labels ("Facets Table", "Facets Column", "URL"), not from
+Columns are located from the header labels (any "... Table", "... Column", plus "URL"), not from
 fixed letters, and a sheet may contain any number of such blocks.
 """
 
@@ -20,6 +20,8 @@ from pathlib import Path
 import openpyxl
 
 URL_RE = re.compile(r"https?://[^\s\"'<>]+", re.I)
+_TABLE_LABEL = re.compile(r"(^|\s)table$")
+_COLUMN_LABEL = re.compile(r"(^|\s)column$")
 SERVICE_WORDS = re.compile(r"^\s*(web|rest)\s+services?\s*$", re.I)
 
 
@@ -33,8 +35,8 @@ class RawRow:
     web_field: str
     data_type: str
     requirement: str
-    facets_table: str
-    facets_column: str
+    backend_table: str
+    backend_column: str
     rest_field: str
     api_field: str
     url_text: str
@@ -87,13 +89,14 @@ def read_sections(path: str | Path, sheet: str | None = None) -> tuple[str, list
     headers: list[tuple[int, dict[str, int]]] = []
     for r in range(1, max_row + 1):
         labels = {c: _txt(cell(r, c).value).lower() for c in range(1, max_col + 1)}
-        ft = next((c for c, l in labels.items() if l == "facets table"), None)
+        # Vendor-neutral: "<anything> Table" / "<anything> Column" / "URL" (e.g. "Source Table", "DB Column")
+        ft = next((c for c, l in labels.items() if _TABLE_LABEL.search(l)), None)
         url = next((c for c, l in labels.items() if l == "url" and ft and c > ft), None)
         if ft and url:
-            fc = next((c for c, l in labels.items() if l == "facets column" and c > ft), ft + 1)
+            fc = next((c for c, l in labels.items() if _COLUMN_LABEL.search(l) and c > ft), ft + 1)
             cols = {
-                "facets_table": ft,
-                "facets_column": fc,
+                "backend_table": ft,
+                "backend_column": fc,
                 "rest_field": fc + 1,
                 "api_field": fc + 2,
                 "url": url,
@@ -107,7 +110,7 @@ def read_sections(path: str | Path, sheet: str | None = None) -> tuple[str, list
     if not headers:
         raise ConversionError(
             f"no header row found on sheet {ws.title!r}: expected a row containing the labels "
-            "'Facets Table', 'Facets Column' and 'URL'"
+            "'<name> Table', '<name> Column' and 'URL'"
         )
 
     # 2. section banners above each header ------------------------------------------------
@@ -152,8 +155,8 @@ def read_sections(path: str | Path, sheet: str | None = None) -> tuple[str, list
                 web_field=t("web_field"),
                 data_type=t("data_type"),
                 requirement=t("requirement"),
-                facets_table=t("facets_table"),
-                facets_column=t("facets_column"),
+                backend_table=t("backend_table"),
+                backend_column=t("backend_column"),
                 rest_field=t("rest_field"),
                 api_field=t("api_field"),
                 url_text=url_text,

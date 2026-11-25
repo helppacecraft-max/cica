@@ -3,12 +3,12 @@
 Four levels, cheapest first. **Levels 1–3 prove the software works. Only level 4 proves the
 *mapping* is right** — and that is what "100% accuracy" actually depends on.
 
-| Level | Needs Facets? | Proves | Time |
+| Level | Needs the upstream? | Proves | Time |
 |---|---|---|---|
-| 1. Automated suite | no | engine, converter, API behave as designed (186 tests) | 10 s |
+| 1. Automated suite | no | engine, converter, API behave as designed (192 tests) | 10 s |
 | 2. `selftest` | no | whole pipeline works on sample data | 5 s |
-| 3. Manual run vs mock Facets | no | you can operate it; failure behaviour visible | 15 min |
-| 4. Verify against real Facets | **yes** | **field paths and values are correct** | your sign-off |
+| 3. Manual run vs mock upstream | no | you can operate it; failure behaviour visible | 15 min |
+| 4. Verify against the real upstream | **yes** | **field paths and values are correct** | your sign-off |
 
 > The mock (level 3) generates its JSON *from the config itself*, so it can never disagree with the
 > config. It tests plumbing, not mapping. Don't let a green level 1–3 stand in for level 4.
@@ -42,41 +42,41 @@ planner (minimum calls, ordering); executor (retries, 404 vs 5xx, partial line f
 path-injection attempts, response_root, discovery modes); API (strict mode, auth, multi-project,
 readiness, reload keeps old config on bad new one); contract-test and `validate --samples`.
 
-All green ⇒ exit code 0 and `186 passed` (the number grows as tests are added).
+All green ⇒ exit code 0 and `192 passed` (the number grows as tests are added).
 
 ## 2. `selftest`
 
 ```bash
-facets-wrapper selftest
+api-wrapper selftest
 ```
 Generates a sample workbook, converts it, loads the YAML, runs the wrapper against an in-process fake
-Facets and asserts ~17 properties. Expect every line `[PASS]` and `SELFTEST PASSED` (exit 0).
+upstream and asserts ~17 properties. Expect every line `[PASS]` and `SELFTEST PASSED` (exit 0).
 
-## 3. Manual run against the mock Facets
+## 3. Manual run against the mock upstream
 
 Two terminals (or two PowerShell windows), venv active in both.
 
 ```bash
-facets-wrapper sample --dir work
-facets-wrapper convert --excel work/sample_mapping.xlsx --project demo --overrides work/overrides.yml --out work/configs
+api-wrapper sample --dir work
+api-wrapper convert --excel work/sample_mapping.xlsx --project demo --overrides work/overrides.yml --out work/configs
 ```
 Open `work/configs/demo/report.md`: you should see 4 sections, 26 mapped fields, 6 skipped rows (1 mandatory), and warnings such as
 `FILL_SERIES_URLS`, `NON_REST_URL`, `DUPLICATE_MAPPING`, `BRACKET_PLACEHOLDER` — the sample deliberately contains the defect types found in the real sheet.
 
-**Terminal 1 — fake Facets**
+**Terminal 1 — fake upstream**
 ```bash
-facets-wrapper mock-upstream --config work/configs/demo/mapping.yml --port 9000
+api-wrapper mock-upstream --config work/configs/demo/mapping.yml --port 9000
 ```
 **Terminal 2 — the wrapper**
 
 bash:
 ```bash
-FACETS_DEMO_BASE_URL=http://127.0.0.1:9000 facets-wrapper serve --config-dir work/configs --port 8000
+UPSTREAM_DEMO_BASE_URL=http://127.0.0.1:9000 api-wrapper serve --config-dir work/configs --port 8000
 ```
 PowerShell:
 ```powershell
-$env:FACETS_DEMO_BASE_URL = "http://127.0.0.1:9000"
-facets-wrapper serve --config-dir work/configs --port 8000
+$env:UPSTREAM_DEMO_BASE_URL = "http://127.0.0.1:9000"
+api-wrapper serve --config-dir work/configs --port 8000
 ```
 Ask the service what a project accepts: `GET /v1/catalog` → `request.inputs` (name / required / pattern / label).
 Check `http://127.0.0.1:8000/readyz` → `{"ready":true,...}` and browse `http://127.0.0.1:8000/docs`.
@@ -108,32 +108,32 @@ Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/v1/claims/enrich -Cont
 | `"groups":["nope"]` | — | HTTP 422 `invalid_selection` naming the unknown group |
 
 Also try: stop the mock, call again → `errors[]` `connect_error:…` after retries; set
-`FACETS_WRAPPER_API_KEY_DEMO=abc` and restart → calls without `X-API-Key: abc` get 401.
+`WRAPPER_API_KEY_DEMO=abc` and restart → calls without `X-API-Key: abc` get 401.
 The wrapper prints one audit line per request (correlation ID, project, per-source states, latency — **no payloads**).
 
-## 4. Verify against real Facets (the accuracy gate)
+## 4. Verify against the real upstream (the accuracy gate)
 
 Do this per project, with a person who knows the claim data. Use **non-production or sanitised** claims where you can.
 
-### 4.0 Find out how Facets wants you to authenticate (do this first)
+### 4.0 Find out how the upstream wants you to authenticate (do this first)
 
 You don't need to know in advance. Set the base URL, make **one** call with `probe`, read what the server says, adjust, repeat.
 `probe` prints status, the server's `WWW-Authenticate` hint, and the JSON **structure (key names and types — never values)**.
 
 bash:
 ```bash
-export FACETS_EMBLEM_BASE_URL=https://<facets-host>:10408
-facets-wrapper probe --project emblem --path /RestServices/facets/api/v1/Claims/<A-REAL-CLAIM-ID>/Inquiry/Summary
+export UPSTREAM_MYPROJECT_BASE_URL=https://<upstream-host>:10408
+api-wrapper probe --project myproject --path /RestServices/core/api/v1/Claims/<A-REAL-CLAIM-ID>/Inquiry/Summary
 ```
 PowerShell:
 ```powershell
-$env:FACETS_EMBLEM_BASE_URL = "https://<facets-host>:10408"
-facets-wrapper probe --project emblem --path /RestServices/facets/api/v1/Claims/<A-REAL-CLAIM-ID>/Inquiry/Summary
+$env:UPSTREAM_MYPROJECT_BASE_URL = "https://<upstream-host>:10408"
+api-wrapper probe --project myproject --path /RestServices/core/api/v1/Claims/<A-REAL-CLAIM-ID>/Inquiry/Summary
 ```
 | You see | Meaning → do |
 |---|---|
 | `HTTP 200 … authenticated and JSON received` + structure | done. The key names printed are what `path_template` / `response_root` must match |
-| `HTTP 401`, `www-authenticate: Basic …` | `FACETS_EMBLEM_AUTH=basic` + `_USERNAME` / `_PASSWORD` |
+| `HTTP 401`, `www-authenticate: Basic …` | `UPSTREAM_MYPROJECT_AUTH=basic` + `_USERNAME` / `_PASSWORD` |
 | `HTTP 401`, `www-authenticate: Bearer …` | `AUTH=bearer` + `_TOKEN` |
 | `HTTP 401/403`, no hint | look at a request that works for you in Postman / browser dev tools → Headers tab. A header like `X-Api-Key: …` ⇒ `AUTH=header` with `_AUTH_HEADER_NAME=X-Api-Key` and `_AUTH_HEADER_VALUE`. Extra headers such as a tenant/app id ⇒ `_HEADERS='{"X-Tenant":"…"}'` |
 | `HTTP 403` after trying the right style | account lacks permission for that endpoint, or a required extra header is missing |
@@ -141,22 +141,22 @@ facets-wrapper probe --project emblem --path /RestServices/facets/api/v1/Claims/
 | `body is not JSON` | wrong URL or an HTML login page |
 | `connection error` / `timeout` | host/port, VPN/firewall, or TLS (`_CA_BUNDLE`) |
 
-Add `--save samples/emblem/claims_inquiry_summary.json` to keep the raw response as a sample (**real data on disk — sanitise PHI first**; this replaces hand-saving in 4.2).
+Add `--save samples/myproject/claims_inquiry_summary.json` to keep the raw response as a sample (**real data on disk — sanitise PHI first**; this replaces hand-saving in 4.2).
 
-**Rehearse locally first** — the mock can demand credentials, so you can watch a 401, fix your variables, and see it go green without touching Facets:
+**Rehearse locally first** — the mock can demand credentials, so you can watch a 401, fix your variables, and see it go green without touching the real upstream:
 ```bash
-facets-wrapper mock-upstream --config work/configs/demo/mapping.yml --port 9000 --require-header "X-Facets-Key=demo-secret"
+api-wrapper mock-upstream --config work/configs/demo/mapping.yml --port 9000 --require-header "X-Upstream-Key=demo-secret"
 #   also: --require-basic user:pass | --require-bearer TOKEN | --require-query apikey=value  (repeatable)
-FACETS_DEMO_BASE_URL=http://127.0.0.1:9000 facets-wrapper probe --project demo --path /RestServices/facets/api/v1/Claims/CLAIM000001/Inquiry/Summary   # -> 401
-FACETS_DEMO_BASE_URL=http://127.0.0.1:9000 FACETS_DEMO_AUTH=header FACETS_DEMO_AUTH_HEADER_NAME=X-Facets-Key FACETS_DEMO_AUTH_HEADER_VALUE=demo-secret \
-    facets-wrapper probe --project demo --path /RestServices/facets/api/v1/Claims/CLAIM000001/Inquiry/Summary                                   # -> 200
+UPSTREAM_DEMO_BASE_URL=http://127.0.0.1:9000 api-wrapper probe --project demo --path /RestServices/core/api/v1/Claims/CLAIM000001/Inquiry/Summary   # -> 401
+UPSTREAM_DEMO_BASE_URL=http://127.0.0.1:9000 UPSTREAM_DEMO_AUTH=header UPSTREAM_DEMO_AUTH_HEADER_NAME=X-Upstream-Key UPSTREAM_DEMO_AUTH_HEADER_VALUE=demo-secret \
+    api-wrapper probe --project demo --path /RestServices/core/api/v1/Claims/CLAIM000001/Inquiry/Summary                                   # -> 200
 ```
 
 ### 4.1 Convert your real sheet
 ```bash
-facets-wrapper convert --excel MappingSheet_EH.xlsx --project emblem --out configs
+api-wrapper convert --excel MappingSheet.xlsx --project myproject --out configs
 ```
-Read `configs/emblem/report.md` top to bottom. Resolve **ACTION REQUIRED**; decide each **WARNING** (see [EXCEL_TO_CONFIG.md](EXCEL_TO_CONFIG.md)). Repeat until “Config loadable: YES”. Check the *mandatory & unmapped* count is acceptable (ideally 0).
+Read `configs/myproject/report.md` top to bottom. Resolve **ACTION REQUIRED**; decide each **WARNING** (see [EXCEL_TO_CONFIG.md](EXCEL_TO_CONFIG.md)). Repeat until “Config loadable: YES”. Check the *mandatory & unmapped* count is acceptable (ideally 0).
 
 ### 4.2 Capture one real response per source
 For each source in the report’s *Sources* table, call the real endpoint for a known claim and save the JSON as `<source>.json`
@@ -164,20 +164,20 @@ For each source in the report’s *Sources* table, call the real endpoint for a 
 
 bash:
 ```bash
-mkdir -p samples/emblem
-curl -s -u "$USER:$PASS" "https://<facets-host>:10408/RestServices/facets/api/v1/Claims/<CLAIM>/Inquiry/Summary" -o samples/emblem/claims_inquiry_summary.json
+mkdir -p samples/myproject
+curl -s -u "$USER:$PASS" "https://<upstream-host>:10408/RestServices/core/api/v1/Claims/<CLAIM>/Inquiry/Summary" -o samples/myproject/claims_inquiry_summary.json
 ```
 PowerShell:
 ```powershell
 $cred = Get-Credential
-Invoke-RestMethod -Uri "https://<facets-host>:10408/RestServices/facets/api/v1/Claims/<CLAIM>/Inquiry/Summary" -Credential $cred |
-  ConvertTo-Json -Depth 30 | Out-File -Encoding utf8 samples\emblem\claims_inquiry_summary.json
+Invoke-RestMethod -Uri "https://<upstream-host>:10408/RestServices/core/api/v1/Claims/<CLAIM>/Inquiry/Summary" -Credential $cred |
+  ConvertTo-Json -Depth 30 | Out-File -Encoding utf8 samples\myproject\claims_inquiry_summary.json
 ```
 (Postman/browser “Save response” works too. Use the *source names* from your `mapping.yml`.)
 
 ### 4.3 Check every field path against the real responses
 ```bash
-facets-wrapper validate --config configs/emblem/mapping.yml --samples samples/emblem
+api-wrapper validate --config configs/myproject/mapping.yml --samples samples/myproject
 ```
 Per field: `ok` · `ok (path exists, value empty in sample)` · `FAIL missing_in_source [REQUIRED]` · `NO SAMPLE`.
 Exit code 1 if any **required** field fails (`--strict`: also optional failures / missing samples).
@@ -188,15 +188,15 @@ Exit code 1 if any **required** field fails (`--strict`: also optional failures 
 `validate` proves paths exist; it does not prove **values are right**. Build golden cases:
 
 ```
-cases/emblem/<case_name>/
+cases/myproject/<case_name>/
     case.json          {"inputs": {"claim_id": "…", "associate_id": "…"}}     (optional "groups"/"fields"; legacy {"claim_id": "…"} works)
     responses/         the files from 4.2 (404 is simulated for sources without a file)
     expected.json      what the business says the answer is
 ```
 ```bash
-facets-wrapper contract-test --config configs/emblem/mapping.yml --cases cases/emblem --update   # snapshot once
-# >>> now a PERSON compares expected.json with the Facets screen/claim for each field and corrects it <<<
-facets-wrapper contract-test --config configs/emblem/mapping.yml --cases cases/emblem            # from now on: regression gate
+api-wrapper contract-test --config configs/myproject/mapping.yml --cases cases/myproject --update   # snapshot once
+# >>> now a PERSON compares expected.json with the source system's screen/claim for each field and corrects it <<<
+api-wrapper contract-test --config configs/myproject/mapping.yml --cases cases/myproject            # from now on: regression gate
 ```
 `--update` only records what the code currently produces — it is a starting point, **not** evidence of correctness until a person has checked it.
 Good cases: a normal claim; one with several lines; one with a missing optional source (no COB); one with
@@ -204,16 +204,16 @@ empty/zero values; one with multiple modifiers; an institutional vs professional
 
 ### 4.5 Live smoke test
 ```bash
-export FACETS_EMBLEM_BASE_URL=https://<facets-host>:10408 FACETS_EMBLEM_AUTH=basic FACETS_EMBLEM_USERNAME=… FACETS_EMBLEM_PASSWORD=…
-facets-wrapper serve --config-dir configs --port 8000
+export UPSTREAM_MYPROJECT_BASE_URL=https://<upstream-host>:10408 UPSTREAM_MYPROJECT_AUTH=basic UPSTREAM_MYPROJECT_USERNAME=… UPSTREAM_MYPROJECT_PASSWORD=…
+api-wrapper serve --config-dir configs --port 8000
 curl -s localhost:8000/v1/claims/enrich -H 'content-type: application/json' -d '{"claim_id":"<CLAIM>","include_provenance":true}'
 ```
-(PowerShell: set `$env:FACETS_EMBLEM_BASE_URL = "…"` etc.) Then check:
+(PowerShell: set `$env:UPSTREAM_MYPROJECT_BASE_URL = "…"` etc.) Then check:
 
 - [ ] `complete` is `true` for several known-good claims
-- [ ] every field in `field_status` is `ok` or an *explained* `null_in_source` (compare with Facets)
+- [ ] every field in `field_status` is `ok` or an *explained* `null_in_source` (compare with the source system)
 - [ ] `missing_in_source` appears **nowhere** unexpected (it means a wrong path)
-- [ ] line count and per-line values match Facets for a multi-line claim
+- [ ] line count and per-line values match the source system for a multi-line claim
 - [ ] amounts have the right scale (`"125.00"`), dates the right day, IDs keep leading zeros
 - [ ] a claim ID that does not exist ⇒ `complete:false` with `source_not_found`, not a crash
 - [ ] latency acceptable; if lines are probed and it is slow, switch to `discovery.mode: from_source`
@@ -221,7 +221,7 @@ curl -s localhost:8000/v1/claims/enrich -H 'content-type: application/json' -d '
 
 ### 4.6 Sign-off record
 Keep per project: `mapping.yml` + `overrides.yml` (git), the `report.md`, the contract cases and the date of the
-Facets version they were verified against. **Re-run 4.3–4.4 after any Facets upgrade or sheet change.**
+upstream version they were verified against. **Re-run 4.3–4.4 after any upstream upgrade or sheet change.**
 The service itself helps: `missing_in_source` / `coercion_error` statuses in production are the signal that an upstream contract changed.
 
 ## Troubleshooting
@@ -229,15 +229,15 @@ The service itself helps: `missing_in_source` / `coercion_error` statuses in pro
 | Symptom | Cause / fix |
 |---|---|
 | `convert`: `cannot open workbook … PermissionError` | Excel has the file open — close it or convert a copy |
-| `no header row found` | the sheet needs a row labelled `Facets Table`, `Facets Column` and `URL`; pass `--sheet` if the data is not on “Mapping Sheet” |
+| `no header row found` | the sheet needs a row with labels ending in `Table` and `Column`, plus `URL` and an `API Field…` column; pass `--sheet` if the data is not on “Mapping Sheet” |
 | Report: *Config loadable: NO* | read ACTION REQUIRED / ERRORS; the usual cause is an unbound `{subscriber_key}` |
 | `serve`: *Refusing to start* | config invalid — the message lists every problem |
-| `503 project_not_ready` | `FACETS_<PROJECT>_BASE_URL` (or auth vars) missing; see `/readyz`. The name is the project **upper-cased** |
-| `401 invalid_api_key` | the *wrapper's own* key (`FACETS_WRAPPER_API_KEY_<P>`) is set; send `X-API-Key` to the wrapper |
-| `errors[]` shows `http_401` / `http_403` from a source | Facets rejected the wrapper's credentials — run `probe`, see §4.0 |
+| `503 project_not_ready` | `UPSTREAM_<PROJECT>_BASE_URL` (or auth vars) missing; see `/readyz`. The name is the project **upper-cased** |
+| `401 invalid_api_key` | the *wrapper's own* key (`WRAPPER_API_KEY_<P>`) is set; send `X-API-Key` to the wrapper |
+| `errors[]` shows `http_401` / `http_403` from a source | the upstream rejected the wrapper's credentials — run `probe`, see §4.0 |
 | `503 project_not_ready` mentioning auth / header | a credential variable is missing or malformed; `/readyz` lists the problem (never the secret) |
 | `400 project_required` | several projects loaded: send `X-Project` |
 | Everything `missing_in_source` | wrong `path_template` / `response_root`; inspect a real response and run `validate --samples` |
 | `source_failed` + `param_…_unresolved` | the JSONPath bound in `params` finds nothing, or the value has characters outside `[A-Za-z0-9_.-]` |
 | `probe_limit_reached` | claim has more lines than `discovery.max` (default 50) — raise it or use `from_source` |
-| TLS errors | set `FACETS_<P>_CA_BUNDLE` to your CA file (avoid `VERIFY_TLS=false` outside a lab) |
+| TLS errors | set `UPSTREAM_<P>_CA_BUNDLE` to your CA file (avoid `VERIFY_TLS=false` outside a lab) |

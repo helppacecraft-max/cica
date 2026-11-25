@@ -1,11 +1,11 @@
-"""A fake 'Facets' that serves synthetic JSON generated FROM a project config.
+"""A fake upstream that serves synthetic JSON generated FROM a project config.
 
 Purpose: let anyone exercise the full wrapper (planning, parallel calls, line fan-out, error
-handling) without access to a real Facets environment.
+handling) without access to a real upstream environment.
 
 LIMITATION (important): because the fake responses are derived from the same config the wrapper
-reads, this proves the *plumbing*, not the *mapping*. Whether the real Facets JSON contains
-``$.PRPR_NAME`` can only be proven against real sample responses -- see ``facets-wrapper validate``.
+reads, this proves the *plumbing*, not the *mapping*. Whether the real upstream JSON contains
+``$.PRPR_NAME`` can only be proven against real sample responses -- see ``api-wrapper validate``.
 
 Magic claim IDs for failure testing:  ``NOTFOUND*`` -> 404 for every endpoint,
 ``ERROR500*`` -> HTTP 500, ``BADJSON*`` -> 200 with a non-JSON body, ``NOLINES*`` -> 404 for line 1.
@@ -104,7 +104,7 @@ def create_mock_app(
 ) -> FastAPI:
     """``require_headers`` / ``require_query``: the mock answers 401 unless ALL are present and exact --
     lets you test your auth configuration (basic = Authorization header with the encoded value)."""
-    app = FastAPI(title=f"Mock Facets for {cfg.project}")
+    app = FastAPI(title=f"Mock upstream for {cfg.project}")
     app.state.unmockable = {}
     required_h = {k.lower(): v for k, v in (require_headers or {}).items()}
 
@@ -117,7 +117,7 @@ def create_mock_app(
             if not ok:
                 scheme = "Basic" if required_h.get("authorization", "").startswith("Basic ") else (
                     "Bearer" if required_h.get("authorization", "").startswith("Bearer ") else None)
-                hdr = {"WWW-Authenticate": f'{scheme} realm="mock-facets"'} if scheme else {}
+                hdr = {"WWW-Authenticate": f'{scheme} realm="mock-upstream"'} if scheme else {}
                 return JSONResponse({"error": "unauthorized"}, status_code=401, headers=hdr)
             return await call_next(request)
 

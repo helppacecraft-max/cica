@@ -4,9 +4,9 @@ import json
 
 import pytest
 
-from facets_wrapper.cli import main
-from facets_wrapper.contract import run_cases
-from facets_wrapper.mock_upstream import build_document
+from api_wrapper.cli import main
+from api_wrapper.contract import run_cases
+from api_wrapper.mock_upstream import build_document
 
 
 @pytest.fixture()

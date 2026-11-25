@@ -2,30 +2,30 @@
 
 Per project (``<P>`` = project name upper-cased, non-alphanumerics -> ``_``):
 
-    FACETS_<P>_BASE_URL          required, e.g. https://facets-host:10408
+    UPSTREAM_<P>_BASE_URL          required, e.g. https://upstream-host:10408
 
-  How the wrapper authenticates TO Facets (pick one mode):
-    FACETS_<P>_AUTH              none (default) | basic | bearer | header | query
-      basic   : FACETS_<P>_USERNAME, FACETS_<P>_PASSWORD
-      bearer  : FACETS_<P>_TOKEN                          -> Authorization: Bearer <token>
-      header  : FACETS_<P>_AUTH_HEADER_NAME  (default X-API-Key)
-                FACETS_<P>_AUTH_HEADER_VALUE (secret)
-                FACETS_<P>_AUTH_HEADER_PREFIX (optional, e.g. "Token " or "ApiKey ")
-      query   : FACETS_<P>_AUTH_QUERY_NAME, FACETS_<P>_AUTH_QUERY_VALUE   -> ?name=value on every call
-    FACETS_<P>_HEADERS           optional, ANY mode: JSON object of extra headers, e.g.
+  How the wrapper authenticates TO the upstream (pick one mode):
+    UPSTREAM_<P>_AUTH              none (default) | basic | bearer | header | query
+      basic   : UPSTREAM_<P>_USERNAME, UPSTREAM_<P>_PASSWORD
+      bearer  : UPSTREAM_<P>_TOKEN                          -> Authorization: Bearer <token>
+      header  : UPSTREAM_<P>_AUTH_HEADER_NAME  (default X-API-Key)
+                UPSTREAM_<P>_AUTH_HEADER_VALUE (secret)
+                UPSTREAM_<P>_AUTH_HEADER_PREFIX (optional, e.g. "Token " or "ApiKey ")
+      query   : UPSTREAM_<P>_AUTH_QUERY_NAME, UPSTREAM_<P>_AUTH_QUERY_VALUE   -> ?name=value on every call
+    UPSTREAM_<P>_HEADERS           optional, ANY mode: JSON object of extra headers, e.g.
                                  {"X-Tenant": "acme", "X-Client-Id": "wrapper"}
 
   Connection:
-    FACETS_<P>_VERIFY_TLS        true (default) | false
-    FACETS_<P>_CA_BUNDLE         path to a CA bundle (overrides VERIFY_TLS)
-    FACETS_<P>_TIMEOUT_S         default 15
-    FACETS_<P>_RETRIES           default 2   (timeouts / connection errors / 5xx only)
-    FACETS_<P>_MAX_CONCURRENCY   default 8   (parallel upstream calls per project)
+    UPSTREAM_<P>_VERIFY_TLS        true (default) | false
+    UPSTREAM_<P>_CA_BUNDLE         path to a CA bundle (overrides VERIFY_TLS)
+    UPSTREAM_<P>_TIMEOUT_S         default 15
+    UPSTREAM_<P>_RETRIES           default 2   (timeouts / connection errors / 5xx only)
+    UPSTREAM_<P>_MAX_CONCURRENCY   default 8   (parallel upstream calls per project)
 
   Protecting the WRAPPER's own API (inbound, unrelated to the above):
-    FACETS_WRAPPER_API_KEY_<P>   if set, callers must send  X-API-Key
+    WRAPPER_API_KEY_<P>   if set, callers must send  X-API-Key
 
-Global:  FACETS_WRAPPER_CONFIG_DIR, FACETS_WRAPPER_ADMIN_KEY, FACETS_WRAPPER_PLUGINS
+Global:  WRAPPER_CONFIG_DIR, WRAPPER_ADMIN_KEY, WRAPPER_PLUGINS
 Secrets are never logged and never appear in /readyz or error responses.
 """
 
@@ -82,7 +82,7 @@ class ProjectEnv:
     config_errors: tuple[str, ...] = ()
 
     def problems(self) -> list[str]:
-        """Why this project cannot call Facets yet. Never includes secret values."""
+        """Why this project cannot call the upstream yet. Never includes secret values."""
         out = list(self.config_errors)
         if not self.base_url:
             out.append("base URL not configured")
@@ -94,11 +94,11 @@ class ProjectEnv:
             out.append("bearer auth needs a token")
         if self.auth == "header":
             if not self.auth_header_value:
-                out.append("header auth needs FACETS_<P>_AUTH_HEADER_VALUE")
+                out.append("header auth needs UPSTREAM_<P>_AUTH_HEADER_VALUE")
             elif (p := bad_header(self.auth_header_name, self.auth_header_prefix + self.auth_header_value)):
                 out.append(p)
         if self.auth == "query" and not (self.auth_query_name and self.auth_query_value):
-            out.append("query auth needs FACETS_<P>_AUTH_QUERY_NAME and FACETS_<P>_AUTH_QUERY_VALUE")
+            out.append("query auth needs UPSTREAM_<P>_AUTH_QUERY_NAME and UPSTREAM_<P>_AUTH_QUERY_VALUE")
         if self.auth == "bearer" and self.token and (p := bad_header("Authorization", self.token)):
             out.append(p)
         reserved = {"authorization"} if self.auth in ("basic", "bearer") else set()
@@ -114,7 +114,7 @@ class ProjectEnv:
 
 def load_project_env(project: str, environ: dict[str, str]) -> ProjectEnv:
     k = env_key(project)
-    g = lambda suffix: environ.get(f"FACETS_{k}_{suffix}")  # noqa: E731
+    g = lambda suffix: environ.get(f"UPSTREAM_{k}_{suffix}")  # noqa: E731
     errors: list[str] = []
     extra: dict[str, str] = {}
     if g("HEADERS"):
@@ -124,7 +124,7 @@ def load_project_env(project: str, environ: dict[str, str]) -> ProjectEnv:
                 raise ValueError
             extra = parsed
         except ValueError:
-            errors.append(f"FACETS_{k}_HEADERS must be a JSON object of string keys and string values")
+            errors.append(f"UPSTREAM_{k}_HEADERS must be a JSON object of string keys and string values")
     verify: bool | str = _bool(g("VERIFY_TLS"), True)
     if g("CA_BUNDLE"):
         verify = g("CA_BUNDLE")  # type: ignore[assignment]
@@ -138,7 +138,7 @@ def load_project_env(project: str, environ: dict[str, str]) -> ProjectEnv:
         timeout_s=float(g("TIMEOUT_S") or 15),
         retries=int(g("RETRIES") or 2),
         max_concurrency=int(g("MAX_CONCURRENCY") or 8),
-        api_key=environ.get(f"FACETS_WRAPPER_API_KEY_{k}") or None,
+        api_key=environ.get(f"WRAPPER_API_KEY_{k}") or None,
         auth_header_name=g("AUTH_HEADER_NAME") or "X-API-Key",
         auth_header_value=g("AUTH_HEADER_VALUE"),
         auth_header_prefix=g("AUTH_HEADER_PREFIX") or "",

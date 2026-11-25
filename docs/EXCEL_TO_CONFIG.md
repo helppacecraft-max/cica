@@ -1,7 +1,7 @@
 # Excel → config
 
 ```bash
-facets-wrapper convert --excel MappingSheet.xlsx --project emblem [--overrides overrides.yml] [--out configs] [--sheet "Mapping Sheet"] [--strict]
+api-wrapper convert --excel MappingSheet.xlsx --project myproject [--overrides overrides.yml] [--out configs] [--sheet "Mapping Sheet"] [--strict]
 ```
 Writes `configs/<project>/mapping.yml`, `report.md` (human) and `report.yml` (machine).
 Exit code: `0` ok · `1` unreadable input/bad overrides · `2` with `--strict` if anything needs action or the config is not loadable.
@@ -15,7 +15,7 @@ Located **by header label**, not by column letter, so inserted/blank columns don
 ```
  row n-2   Claim Level Data          ← section banner (merged cells are fine)
  row n-1   Web Services / REST Services
- row n     Field Name | Data Type | Default Value | Facets Table | Facets Column | Field Name | API Field name | URL | Comments
+ row n     Field Name | Data Type | Default Value | <x> Table | <x> Column | Field Name | API Field name | URL | Comments
  row n+1…  data rows
 ```
 
@@ -24,7 +24,7 @@ Located **by header label**, not by column letter, so inserted/blank columns don
 | left `Field Name` | fallback business name |
 | `Data Type` | `Alphanumeric/String→string`, `Numeric→decimal` (see ID rule), `Date→date`, … (`settings.type_map`) |
 | `Default Value` | **`Mandatory` ⇒ `required: true`**, anything else ⇒ optional. (Despite its name this column holds requiredness, not a default.) |
-| `Facets Table`, `Facets Column` | informational (`facets:` block in the config); **not used to call anything** |
+| `… Table`, `… Column` (any label ending in *Table* / *Column*) | informational (`backend:` block in the config); **not used to call anything** |
 | right `Field Name` | business field name → slug (`Claim Id` → `claim_id`) |
 | `API Field name` | the JSON key → JSONPath via `settings.path_template` (default `$.{api_field}`) |
 | `URL` (text or hyperlink target) | which endpoint → a *source* |
@@ -67,7 +67,7 @@ project:                        # config-level values
       - {name: claim_id}
       - {name: associate_id, pattern: "^[0-9]{1,10}$", required: false}
     at_least_one_of: []
-  null_values: ["1753-01-01", "9999-12-31"]         # raw strings to treat as null (if Facets uses sentinels)
+  null_values: ["1753-01-01", "9999-12-31"]         # raw strings to treat as null (if the upstream uses sentinels)
 
 source_aliases:                 # rename generated sources (do this FIRST; later keys use the new names)
   claims_inquiry_summary: claim_summary

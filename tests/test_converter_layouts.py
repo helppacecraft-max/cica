@@ -2,16 +2,17 @@
 from __future__ import annotations
 
 import openpyxl
+import pytest
 
-from facets_wrapper.converter.build import convert
-from facets_wrapper.converter.excel_reader import read_sections
+from api_wrapper.converter.build import convert
+from api_wrapper.converter.excel_reader import ConversionError, read_sections
 
-U = "https://h.example:1/RestServices/facets/api/v1/Claims/ABC123/Inquiry/Summary/"
+U = "https://h.example:1/RestServices/core/api/v1/Claims/ABC123/Inquiry/Summary/"
 
 
 def book(path, blocks, offset=0, header=None, spacer=True):
     """blocks: [(title_rows, [data rows as 8-tuples])]; offset shifts everything right."""
-    header = header or ["Field Name", "Data Type", "Default Value", "Facets Table", "Facets Column",
+    header = header or ["Field Name", "Data Type", "Default Value", "Source Table", "Source Column",
                         "Field Name", "API Field name", "URL", "Comments"]
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -44,7 +45,7 @@ def test_columns_shifted_right_by_two(tmp_path):
 
 
 def test_truncated_filter_header_labels_as_in_matchum_block(tmp_path):
-    hdr = ["Field Name", "Data Typ", "Default Va", "Facets Table", "Facets Column", "Field Name", "API Field", "URL", "Co"]
+    hdr = ["Field Name", "Data Typ", "Default Va", "Source Table", "Source Column", "Field Name", "API Field", "URL", "Co"]
     p = book(tmp_path / "b.xlsx", [(["MatchUM", "REST Services"], [ROW, ROW2])], header=hdr)
     res = convert(p, "p")
     f = res.config["fields"]
@@ -93,7 +94,7 @@ def test_invalid_api_field_is_skipped_not_guessed(tmp_path):
 
 
 # ---- request inputs / path rules -------------------------------------------------------
-ASSOC = "https://h.example:1/RestServices/facets/api/v1/Associates/12345/Profile"
+ASSOC = "https://h.example:1/RestServices/core/api/v1/Associates/12345/Profile"
 ASSOC_ROW = ("Associate Name", "String", "Mandatory", "T", "C", "Associate Name", "ASSOC_NAME", ASSOC, "")
 
 
@@ -116,15 +117,36 @@ project:
 """)
     res = convert(book(tmp_path / "j.xlsx", [(["Claim Level Data"], [ROW, ASSOC_ROW])]), "p", ov)
     paths = {s["path"] for s in res.config["sources"].values()}
-    assert "/RestServices/facets/api/v1/Associates/{associate_id}/Profile" in paths
-    assert "/RestServices/facets/api/v1/Claims/{claim_id}/Inquiry/Summary" in paths    # default Claims rule NOT lost
+    assert "/RestServices/core/api/v1/Associates/{associate_id}/Profile" in paths
+    assert "/RestServices/core/api/v1/Claims/{claim_id}/Inquiry/Summary" in paths    # default Claims rule NOT lost
     assert not any(i.code == "LITERAL_ID_IN_PATH" for i in res.issues)
     assert res.loadable, res.load_errors
     assert [i["name"] for i in res.config["request"]["inputs"]] == ["claim_id", "associate_id"]
 
 
 def test_unbound_param_snippet_offers_both_options(tmp_path):
-    row = ("X", "String", "Blank", "T", "C", "X", "CLCL_X", "https://h:1/RestServices/facets/api/v1/Claims/AB1/Inquiry/Family/Coverage/77/Inquiry", "")
+    row = ("X", "String", "Blank", "T", "C", "X", "CLCL_X", "https://h:1/RestServices/core/api/v1/Claims/AB1/Inquiry/Family/Coverage/77/Inquiry", "")
     res = convert(book(tmp_path / "k.xlsx", [(["Claim Level Data"], [row])]), "p")
     msg = next(i.message for i in res.issues if i.code == "UNBOUND_PARAM")
     assert "request input" in msg and "from_source" in msg and "subscriber_key" in msg
+
+
+# ---- header labels are vendor-neutral ----------------------------------------------------------
+@pytest.mark.parametrize("table_label, column_label", [
+    ("Source Table", "Source Column"),
+    ("DB Table", "DB Column"),
+    ("Backend System Table", "Backend System Column"),
+    ("table", "column"),
+    ("  TABLE ", " Column  "),
+])
+def test_any_table_and_column_header_labels_are_recognised(tmp_path, table_label, column_label):
+    hdr = ["Field Name", "Data Type", "Default Value", table_label, column_label, "Field Name", "API Field name", "URL", "Comments"]
+    res = convert(book(tmp_path / "v.xlsx", [(["Claim Level Data", "REST Services"], [ROW, ROW2])], header=hdr), "p")
+    assert [f["name"] for f in res.config["fields"]] == ["claim_id", "provider_name"]
+    assert res.config["fields"][0]["backend"] == {"table": "CMC_CLCL_CLAIM", "column": "CLCL_ID"}
+
+
+def test_a_sheet_without_table_column_url_headers_is_rejected_clearly(tmp_path):
+    hdr = ["Field Name", "Data Type", "Default Value", "Alpha", "Beta", "Field Name", "API Field name", "Link", "Comments"]
+    with pytest.raises(ConversionError, match="Table.*Column.*URL"):
+        convert(book(tmp_path / "w.xlsx", [(["Claim Level Data"], [ROW])], header=hdr), "p")

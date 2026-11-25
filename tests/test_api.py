@@ -6,9 +6,9 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from facets_wrapper.api.app import create_app
-from facets_wrapper.config.loader import ConfigError
-from facets_wrapper.mock_upstream import create_mock_app
+from api_wrapper.api.app import create_app
+from api_wrapper.config.loader import ConfigError
+from api_wrapper.mock_upstream import create_mock_app
 
 
 def post(c, **body):
@@ -91,7 +91,7 @@ def two_projects(converted, tmp_path, demo_cfg):
 
 def make_app(cdir, demo_cfg, **env):
     transport = httpx.ASGITransport(app=create_mock_app(demo_cfg, 2))
-    return create_app(str(cdir), environ={"FACETS_DEMO_BASE_URL": "http://m", "FACETS_OTHER_BASE_URL": "http://m", **env}, transport=transport)
+    return create_app(str(cdir), environ={"UPSTREAM_DEMO_BASE_URL": "http://m", "UPSTREAM_OTHER_BASE_URL": "http://m", **env}, transport=transport)
 
 
 def test_project_header_required_with_several_projects(two_projects, demo_cfg):
@@ -104,7 +104,7 @@ def test_project_header_required_with_several_projects(two_projects, demo_cfg):
 
 
 def test_api_key_per_project(two_projects, demo_cfg):
-    with TestClient(make_app(two_projects, demo_cfg, FACETS_WRAPPER_API_KEY_DEMO="s3cret")) as c:
+    with TestClient(make_app(two_projects, demo_cfg, WRAPPER_API_KEY_DEMO="s3cret")) as c:
         h = {"X-Project": "demo"}
         assert c.post("/v1/claims/enrich", json={"claim_id": "CLAIM000001"}, headers=h).status_code == 401
         assert c.post("/v1/claims/enrich", json={"claim_id": "CLAIM000001"}, headers={**h, "X-API-Key": "wrong"}).status_code == 401
@@ -115,7 +115,7 @@ def test_api_key_per_project(two_projects, demo_cfg):
 
 
 def test_project_without_base_url_is_not_ready_but_others_serve(two_projects):
-    app = create_app(str(two_projects), environ={"FACETS_OTHER_BASE_URL": "http://m"})   # no transport, demo has no base URL
+    app = create_app(str(two_projects), environ={"UPSTREAM_OTHER_BASE_URL": "http://m"})   # no transport, demo has no base URL
     with TestClient(app) as c:
         r = c.post("/v1/claims/enrich", json={"claim_id": "CLAIM000001"}, headers={"X-Project": "demo"})
         assert r.status_code == 503 and "base URL" in str(r.json())
@@ -133,8 +133,8 @@ def test_invalid_config_refuses_to_start(two_projects):
 
 def test_reload_requires_key_and_keeps_old_config_when_new_is_invalid(two_projects, demo_cfg):
     with TestClient(make_app(two_projects, demo_cfg)) as c:
-        assert c.post("/admin/reload").status_code == 404   # disabled without FACETS_WRAPPER_ADMIN_KEY
-    with TestClient(make_app(two_projects, demo_cfg, FACETS_WRAPPER_ADMIN_KEY="adm")) as c:
+        assert c.post("/admin/reload").status_code == 404   # disabled without WRAPPER_ADMIN_KEY
+    with TestClient(make_app(two_projects, demo_cfg, WRAPPER_ADMIN_KEY="adm")) as c:
         assert c.post("/admin/reload", headers={"X-Admin-Key": "bad"}).status_code == 401
         assert c.post("/admin/reload", headers={"X-Admin-Key": "adm"}).json()["reloaded"] == ["demo", "other"]
         (two_projects / "other" / "mapping.yml").write_text("project: other\nsources: {}\nfields: []\n")

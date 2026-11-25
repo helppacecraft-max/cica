@@ -1,4 +1,4 @@
-"""How the wrapper authenticates TO Facets: modes, extra headers, validation, secrecy, probe."""
+"""How the wrapper authenticates TO the upstream: modes, extra headers, validation, secrecy, probe."""
 from __future__ import annotations
 
 import asyncio
@@ -10,12 +10,12 @@ import pytest
 import yaml
 from fastapi.testclient import TestClient
 
-from facets_wrapper.api.app import create_app
-from facets_wrapper.cli import main
-from facets_wrapper.config.loader import parse_config
-from facets_wrapper.engine.runtime import ProjectRuntime
-from facets_wrapper.probe import outline, run_probe
-from facets_wrapper.settings import load_project_env
+from api_wrapper.api.app import create_app
+from api_wrapper.cli import main
+from api_wrapper.config.loader import parse_config
+from api_wrapper.engine.runtime import ProjectRuntime
+from api_wrapper.probe import outline, run_probe
+from api_wrapper.settings import load_project_env
 
 CFG = {"project": "t", "sources": {"s": {"path": "/c/{claim_id}", "query": {"fixed": "1"}}},
        "fields": [{"name": "a", "group": "g", "source": "s", "path": "$.A"}]}
@@ -23,13 +23,13 @@ SECRET = "S3cr3t-VALUE-xyz"
 
 
 def env(**kw):
-    e = {"FACETS_T_BASE_URL": "http://up"}
-    e.update({f"FACETS_T_{k}": v for k, v in kw.items()})
+    e = {"UPSTREAM_T_BASE_URL": "http://up"}
+    e.update({f"UPSTREAM_T_{k}": v for k, v in kw.items()})
     return e
 
 
 def call(environ):
-    """Run one enrich through the runtime; return (request seen by 'Facets', result)."""
+    """Run one enrich through the runtime; return (request seen by the upstream, result)."""
     seen = {}
 
     def h(req: httpx.Request):
@@ -65,8 +65,8 @@ def test_api_key_header_default_name():
 def test_api_key_header_custom_name_and_prefix():
     r, _ = call(env(AUTH="header", AUTH_HEADER_NAME="Authorization", AUTH_HEADER_PREFIX="ApiKey ", AUTH_HEADER_VALUE=SECRET))
     assert r.headers["authorization"] == f"ApiKey {SECRET}"
-    r, _ = call(env(AUTH="header", AUTH_HEADER_NAME="X-Facets-Token", AUTH_HEADER_VALUE=SECRET))
-    assert r.headers["x-facets-token"] == SECRET
+    r, _ = call(env(AUTH="header", AUTH_HEADER_NAME="X-Upstream-Token", AUTH_HEADER_VALUE=SECRET))
+    assert r.headers["x-upstream-token"] == SECRET
 
 
 def test_api_key_in_query_merges_with_source_query():
@@ -168,8 +168,8 @@ def test_probe_uses_the_configured_credentials():
 
 
 def test_probe_explains_401_with_server_hint():
-    rc, text = run(env(AUTH="bearer", TOKEN=SECRET), lambda r: httpx.Response(401, headers={"WWW-Authenticate": 'Basic realm="facets"'}))
-    assert rc == 1 and "credentials rejected" in text and 'Basic realm="facets"' in text and "AUTH=basic" in text
+    rc, text = run(env(AUTH="bearer", TOKEN=SECRET), lambda r: httpx.Response(401, headers={"WWW-Authenticate": 'Basic realm="upstream"'}))
+    assert rc == 1 and "credentials rejected" in text and 'Basic realm="upstream"' in text and "AUTH=basic" in text
     assert SECRET not in text
 
 
@@ -204,15 +204,15 @@ def test_outline_is_depth_and_size_bounded():
 
 
 def test_probe_cli_wiring(monkeypatch, capsys):
-    monkeypatch.delenv("FACETS_T_BASE_URL", raising=False)
+    monkeypatch.delenv("UPSTREAM_T_BASE_URL", raising=False)
     assert main(["probe", "--project", "t", "--path", "/x"]) == 1
     assert "base URL not configured" in capsys.readouterr().out
 
 
 # ---- mock upstream can demand credentials, so the auth setup can be rehearsed locally ------------
 def _mock_enrich(demo_cfg, environ, **require):
-    from facets_wrapper.mock_upstream import create_mock_app
-    rt = ProjectRuntime(demo_cfg, load_project_env("demo", {"FACETS_DEMO_BASE_URL": "http://m", **environ}),
+    from api_wrapper.mock_upstream import create_mock_app
+    rt = ProjectRuntime(demo_cfg, load_project_env("demo", {"UPSTREAM_DEMO_BASE_URL": "http://m", **environ}),
                         httpx.ASGITransport(app=create_mock_app(demo_cfg, 2, **require)))
     return asyncio.run(rt.enrich({"claim_id": "CLAIM000001"}, fields=["claim.provider_name"]))
 
@@ -225,14 +225,14 @@ def _mock_enrich(demo_cfg, environ, **require):
     ({"require_headers": {"X-Tenant": "acme"}}, {"HEADERS": '{"X-Tenant": "acme"}'}, {"HEADERS": '{"X-Tenant": "other"}'}),
 ])
 def test_mock_enforces_credentials(demo_cfg, require, good, bad):
-    ok = _mock_enrich(demo_cfg, {f"FACETS_DEMO_{k}": v for k, v in good.items()}, **require)
+    ok = _mock_enrich(demo_cfg, {f"UPSTREAM_DEMO_{k}": v for k, v in good.items()}, **require)
     assert ok["complete"] is True
-    nope = _mock_enrich(demo_cfg, {f"FACETS_DEMO_{k}": v for k, v in bad.items()}, **require)
+    nope = _mock_enrich(demo_cfg, {f"UPSTREAM_DEMO_{k}": v for k, v in bad.items()}, **require)
     assert nope["complete"] is False and nope["errors"][0]["code"] == "http_401"
 
 
 def test_parse_requirements():
-    from facets_wrapper.mock_upstream import parse_requirements
+    from api_wrapper.mock_upstream import parse_requirements
     h, q = parse_requirements(["X-A=1"], ["k=v"], "u:p", None)
     assert h["X-A"] == "1" and h["Authorization"].startswith("Basic ") and q == {"k": "v"}
     assert parse_requirements([], [], None, "tok")[0] == {"Authorization": "Bearer tok"}

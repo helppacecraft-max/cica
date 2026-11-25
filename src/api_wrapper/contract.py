@@ -12,8 +12,8 @@ Case layout (one directory per claim scenario)::
         expected.json          {"complete": true, "data": {...}, "field_status": {...}}
 
 A source with no response file is served as HTTP 404 (so "this claim has no COB" is testable).
-Record responses from real Facets (Postman/curl), SANITISE any PHI, and have a person verify
-``expected.json`` against the Facets UI the first time -- ``--update`` only snapshots current output.
+Record responses from the real upstream (Postman/curl), SANITISE any PHI, and have a person verify
+``expected.json`` against the source system's UI the first time -- ``--update`` only snapshots current output.
 """
 
 from __future__ import annotations

@@ -2,7 +2,7 @@
 
 Config never contains code: it names a transform. Projects needing something special register
 their own with ``@register_transform("name", multi=...)`` in a plugin module listed in the
-``FACETS_WRAPPER_PLUGINS`` environment variable.
+``WRAPPER_PLUGINS`` environment variable.
 
 * ``multi=False`` transforms receive one scalar (field has exactly one path).
 * ``multi=True``  transforms receive a list with one entry per path (``None`` where missing).

@@ -1,4 +1,4 @@
-"""Async HTTP client for the upstream Facets REST services (GET + JSON only)."""
+"""Async HTTP client for the upstream upstream REST services (GET + JSON only)."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from typing import Any
 
 import httpx
 
-log = logging.getLogger("facets_wrapper.client")
+log = logging.getLogger("api_wrapper.client")
 
 
 @dataclass

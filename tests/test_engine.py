@@ -7,10 +7,10 @@ import json
 import httpx
 import pytest
 
-from facets_wrapper.config.loader import parse_config
-from facets_wrapper.engine.planner import SelectionError, build_plan
-from facets_wrapper.engine.runtime import ProjectRuntime
-from facets_wrapper.settings import ProjectEnv
+from api_wrapper.config.loader import parse_config
+from api_wrapper.engine.planner import SelectionError, build_plan
+from api_wrapper.engine.runtime import ProjectRuntime
+from api_wrapper.settings import ProjectEnv
 
 CFG = {
     "project": "t",
@@ -254,7 +254,7 @@ def test_provenance_included_on_request():
 
 
 def test_a_crashing_source_does_not_kill_the_request(monkeypatch):
-    from facets_wrapper.engine import executor
+    from api_wrapper.engine import executor
     async def boom(*a, **k):
         raise RuntimeError("bug")
     monkeypatch.setattr(executor, "_run_single", boom)
