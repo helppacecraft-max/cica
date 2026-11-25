@@ -13,6 +13,8 @@ Magic claim IDs for failure testing:  ``NOTFOUND*`` -> 404 for every endpoint,
 
 from __future__ import annotations
 
+import base64
+import hmac
 import re
 from typing import Any
 
@@ -94,9 +96,30 @@ def build_document(cfg: ProjectConfig, source: str, claim: str, lines: int, key:
     return doc, skipped
 
 
-def create_mock_app(cfg: ProjectConfig, lines: int = 3) -> FastAPI:
+def create_mock_app(
+    cfg: ProjectConfig,
+    lines: int = 3,
+    require_headers: dict[str, str] | None = None,
+    require_query: dict[str, str] | None = None,
+) -> FastAPI:
+    """``require_headers`` / ``require_query``: the mock answers 401 unless ALL are present and exact --
+    lets you test your auth configuration (basic = Authorization header with the encoded value)."""
     app = FastAPI(title=f"Mock Facets for {cfg.project}")
     app.state.unmockable = {}
+    required_h = {k.lower(): v for k, v in (require_headers or {}).items()}
+
+    if required_h or require_query:
+        @app.middleware("http")
+        async def _auth(request: Request, call_next):
+            ok = all(hmac.compare_digest(request.headers.get(k, ""), v) for k, v in required_h.items()) and all(
+                hmac.compare_digest(request.query_params.get(k, ""), v) for k, v in (require_query or {}).items()
+            )
+            if not ok:
+                scheme = "Basic" if required_h.get("authorization", "").startswith("Basic ") else (
+                    "Bearer" if required_h.get("authorization", "").startswith("Bearer ") else None)
+                hdr = {"WWW-Authenticate": f'{scheme} realm="mock-facets"'} if scheme else {}
+                return JSONResponse({"error": "unauthorized"}, status_code=401, headers=hdr)
+            return await call_next(request)
 
     def make(name: str, src: SourceConfig):
         fe = src.foreach
@@ -131,3 +154,19 @@ def create_mock_app(cfg: ProjectConfig, lines: int = 3) -> FastAPI:
     for name, src in cfg.sources.items():
         app.add_api_route(src.path, bind(make(name, src)), methods=["GET"], name=name)
     return app
+
+
+def parse_requirements(header: list[str], query: list[str], basic: str | None, bearer: str | None) -> tuple[dict[str, str], dict[str, str]]:
+    """CLI helper: --require-header NAME=VALUE, --require-query NAME=VALUE, --require-basic user:pass, --require-bearer TOKEN."""
+    h: dict[str, str] = {}
+    q: dict[str, str] = {}
+    for item, target in [(x, h) for x in header] + [(x, q) for x in query]:
+        name, sep, value = item.partition("=")
+        if not sep or not name:
+            raise ValueError(f"expected NAME=VALUE, got {item!r}")
+        target[name] = value
+    if basic:
+        h["Authorization"] = "Basic " + base64.b64encode(basic.encode()).decode()
+    if bearer:
+        h["Authorization"] = f"Bearer {bearer}"
+    return h, q

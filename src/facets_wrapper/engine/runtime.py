@@ -12,6 +12,7 @@ from ..config.models import ProjectConfig
 from ..config.validate import effective_pattern
 from ..settings import ProjectEnv
 from .assemble import assemble
+from .auth import build_auth
 from .client import UpstreamClient
 from .executor import execute_plan
 from .planner import build_plan
@@ -28,12 +29,12 @@ class ProjectRuntime:
             p for p in env.problems() if p != "base URL not configured"
         ]
         if not self.not_ready_reasons:
-            auth = httpx.BasicAuth(env.username, env.password) if env.auth == "basic" else None
-            headers = {"Authorization": f"Bearer {env.token}"} if env.auth == "bearer" else None
+            auth, headers, params = build_auth(env)
             self.client = UpstreamClient(
                 env.base_url or "http://upstream.invalid",
                 auth=auth,
                 headers=headers,
+                params=params,
                 timeout_s=env.timeout_s,
                 retries=env.retries,
                 backoff_s=env.backoff_s,

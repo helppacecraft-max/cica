@@ -147,7 +147,7 @@ Startup is **fail-closed**: if any config is invalid the service refuses to star
 
 1. **Field paths are unverified until you run level 4 of `docs/TESTING.md`.** The sheet gives API field *names*, not JSON paths.
 2. **Line discovery defaults to probing** (`Lines/1`, `2`, … until 404, max 50), sequentially. Correct but slow for big claims, and it hits the endpoint once more than needed. If the claim Summary exposes a line count/list, configure `discovery.mode: from_source`.
-3. **Only GET + JSON**; auth = none/basic/bearer. No OAuth flows, no client-certificate mTLS (server-side CA bundle is supported).
+3. **Only GET + JSON**; outbound auth = none/basic/bearer/API-key header/query key + extra headers. No token-fetching flows (OAuth client-credentials, login-then-token), no client-certificate mTLS (server-side CA bundle is supported).
 4. **No caching, no batch endpoint, no wrapper-side rate limiting / circuit breaker.** Add at the gateway if needed.
 5. **Facets “null” sentinels** (e.g. a minimum SQL date such as `1753-01-01`) are *not* assumed. If the real data uses them, list them in `project.null_values` via overrides.
 6. **Not yet built:** live-capture of Facets responses (save them yourself and sanitise PHI), metrics/OpenTelemetry, per-caller authorisation beyond one API key per project.
@@ -156,6 +156,7 @@ Startup is **fail-closed**: if any config is invalid the service refuses to star
 ## 9. Security & PHI
 
 * No upstream payloads are logged — only correlation ID, project, source names/states, latency. Coercion errors never echo values.
-* Wrapper API: set `FACETS_WRAPPER_API_KEY_<PROJECT>`; without it the project is open (a warning is logged). Put it behind your gateway/TLS regardless.
+* **Outbound credentials** (wrapper → Facets): `none` / `basic` / `bearer` / `header` (any name, any API key) / `query`, plus arbitrary extra headers — all from environment variables per project, validated at startup (header-injection checks included), never in YAML, never logged, never in `/readyz` or error bodies. `facets-wrapper probe` tests them with one call and prints structure only. Not yet supported: token-fetch flows (OAuth/login), client-certificate mTLS.
+* Wrapper API (inbound): set `FACETS_WRAPPER_API_KEY_<PROJECT>`; without it the project is open (a warning is logged). Put it behind your gateway/TLS regardless.
 * Upstream TLS verification is on by default; `…_VERIFY_TLS=false` exists for lab use only.
 * `.gitignore` excludes `*.xlsx`, `/out`, `/local`, `.env`. Recorded samples/contract cases contain data — **sanitise before committing**.

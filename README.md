@@ -26,7 +26,7 @@ python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\
 pip install -e ".[dev]"
 
 facets-wrapper selftest            # sample sheet -> YAML -> wrapper -> fake Facets, with assertions
-pytest                             # full automated suite (148 tests)
+pytest                             # full automated suite (186 tests)
 ```
 
 Try the real workflow on the built-in sample sheet:
@@ -73,7 +73,8 @@ Then follow [docs/EXCEL_TO_CONFIG.md](docs/EXCEL_TO_CONFIG.md) → [docs/TESTING
 | `validate` | Check a config; with `--samples` check every field path against real responses |
 | `contract-test` | Replay recorded real responses, compare with human-verified `expected.json` |
 | `serve` | Run the wrapper API (refuses to start on an invalid config) |
-| `mock-upstream` | Fake Facets generated from a config, for local end-to-end runs |
+| `probe` | ONE real call to Facets with your configured credentials: tests auth, shows the JSON structure (names/types only) |
+| `mock-upstream` | Fake Facets generated from a config, for local end-to-end runs (can demand credentials to rehearse auth) |
 | `sample` / `selftest` | Sample inputs / one-command end-to-end check |
 
 ## Documentation
@@ -95,5 +96,5 @@ src/facets_wrapper/
   api/         app.py  schemas.py                                       FastAPI app
   contract.py  mock_upstream.py  sample/  cli.py  settings.py
 configs/<project>/mapping.yml                                          one directory per project
-tests/                                                                   148 tests
+tests/                                                                   186 tests
 ```
