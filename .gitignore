@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.venv/
+build/
+dist/
+# local/real mapping workbooks and generated outputs may contain internal hosts / claim ids / PHI
+*.xlsx
+!tests/data/*.xlsx
+/out/
+/local/
+.env
