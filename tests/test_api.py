@@ -83,9 +83,9 @@ def two_projects(converted, tmp_path, demo_cfg):
     cdir = tmp_path / "configs"
     shutil.copytree(converted[1], cdir)
     # a second project: same mapping, other name
-    txt = (cdir / "demo" / "mapping.yaml").read_text().replace("project: demo", "project: other", 1)
+    txt = (cdir / "demo" / "mapping.yml").read_text().replace("project: demo", "project: other", 1)
     (cdir / "other").mkdir()
-    (cdir / "other" / "mapping.yaml").write_text(txt)
+    (cdir / "other" / "mapping.yml").write_text(txt)
     return cdir
 
 
@@ -124,7 +124,7 @@ def test_project_without_base_url_is_not_ready_but_others_serve(two_projects):
 
 
 def test_invalid_config_refuses_to_start(two_projects):
-    p = two_projects / "other" / "mapping.yaml"
+    p = two_projects / "other" / "mapping.yml"
     p.write_text(p.read_text().replace("source: claim_summary", "source: nonexistent", 1))
     with pytest.raises(ConfigError, match="unknown source"):
         with TestClient(create_app(str(two_projects), environ={})):
@@ -137,7 +137,7 @@ def test_reload_requires_key_and_keeps_old_config_when_new_is_invalid(two_projec
     with TestClient(make_app(two_projects, demo_cfg, FACETS_WRAPPER_ADMIN_KEY="adm")) as c:
         assert c.post("/admin/reload", headers={"X-Admin-Key": "bad"}).status_code == 401
         assert c.post("/admin/reload", headers={"X-Admin-Key": "adm"}).json()["reloaded"] == ["demo", "other"]
-        (two_projects / "other" / "mapping.yaml").write_text("project: other\nsources: {}\nfields: []\n")
+        (two_projects / "other" / "mapping.yml").write_text("project: other\nsources: {}\nfields: []\n")
         r = c.post("/admin/reload", headers={"X-Admin-Key": "adm"})
         assert r.status_code == 422
         # still serving the previous, known-good config

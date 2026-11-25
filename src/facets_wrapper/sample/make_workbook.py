@@ -131,6 +131,6 @@ def write_sample(dir_: str | Path) -> tuple[Path, Path]:
     d = Path(dir_)
     d.mkdir(parents=True, exist_ok=True)
     x = build_workbook(d / "sample_mapping.xlsx")
-    o = d / "overrides.yaml"
+    o = d / "overrides.yml"
     o.write_text(SAMPLE_OVERRIDES, encoding="utf-8")
     return x, o

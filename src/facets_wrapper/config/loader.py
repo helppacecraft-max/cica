@@ -1,9 +1,8 @@
-"""Load project configs (YAML or JSON) from disk, validating structure and semantics."""
+"""Load project configs (YAML) from disk, validating structure and semantics."""
 
 from __future__ import annotations
 
 import importlib
-import json
 from pathlib import Path
 from typing import Any
 
@@ -13,7 +12,7 @@ from pydantic import ValidationError
 from .models import ProjectConfig
 from .validate import validate_project
 
-CONFIG_NAMES = ("mapping.yaml", "mapping.yml", "mapping.json")
+CONFIG_NAMES = ("mapping.yml", "mapping.yaml")
 
 
 class ConfigError(Exception):
@@ -25,10 +24,7 @@ class ConfigError(Exception):
 
 
 def read_document(path: Path) -> Any:
-    text = path.read_text(encoding="utf-8")
-    if path.suffix.lower() == ".json":
-        return json.loads(text)
-    return yaml.safe_load(text)  # YAML is a superset of JSON
+    return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
 def parse_config(doc: Any, where: str = "") -> ProjectConfig:
@@ -65,7 +61,7 @@ def find_config_files(config_dir: str | Path) -> list[Path]:
 
 
 def load_config_dir(config_dir: str | Path) -> dict[str, ProjectConfig]:
-    """Load every ``<config_dir>/<project>/mapping.(yaml|yml|json)``. Any invalid file fails all."""
+    """Load every ``<config_dir>/<project>/mapping.(yml|yaml)``. Any invalid file fails all."""
     projects: dict[str, ProjectConfig] = {}
     errors: list[str] = []
     for f in find_config_files(config_dir):

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import json
-
 import openpyxl
 import pytest
 
@@ -138,15 +136,23 @@ def test_no_environment_data_leaks_into_config(converted):
 
 
 def test_output_is_deterministic(sample_dir, tmp_path):
-    a = write_outputs(convert(sample_dir / "sample_mapping.xlsx", "demo", sample_dir / "overrides.yaml"), tmp_path / "a")
-    b = write_outputs(convert(sample_dir / "sample_mapping.xlsx", "demo", sample_dir / "overrides.yaml"), tmp_path / "b")
+    a = write_outputs(convert(sample_dir / "sample_mapping.xlsx", "demo", sample_dir / "overrides.yml"), tmp_path / "a")
+    b = write_outputs(convert(sample_dir / "sample_mapping.xlsx", "demo", sample_dir / "overrides.yml"), tmp_path / "b")
     assert a["config"].read_bytes() == b["config"].read_bytes()
 
 
-def test_json_output_loads(sample_dir, tmp_path):
-    p = write_outputs(convert(sample_dir / "sample_mapping.xlsx", "demo", sample_dir / "overrides.yaml"), tmp_path, "json")["config"]
-    assert json.loads(p.read_text())["project"] == "demo"
-    assert load_project_file(p).project == "demo"
+def test_output_is_yml_only_and_has_no_json_artifacts(sample_dir, tmp_path):
+    paths = write_outputs(convert(sample_dir / "sample_mapping.xlsx", "demo", sample_dir / "overrides.yml"), tmp_path)
+    assert paths["config"].name == "mapping.yml" and paths["report_yml"].name == "report.yml"
+    assert sorted(p.name for p in (tmp_path / "demo").iterdir()) == ["mapping.yml", "report.md", "report.yml"]
+    assert load_project_file(paths["config"]).project == "demo"
+
+
+def test_loader_ignores_json_config(tmp_path):
+    from facets_wrapper.config.loader import find_config_files
+    (tmp_path / "p").mkdir()
+    (tmp_path / "p" / "mapping.json").write_text("{}")
+    assert find_config_files(tmp_path) == []
 
 
 def test_without_overrides_unbound_param_is_an_action_with_snippet(sample_dir):
@@ -159,7 +165,7 @@ def test_without_overrides_unbound_param_is_an_action_with_snippet(sample_dir):
 
 # ---- overrides -----------------------------------------------------------------------
 def write_ov(tmp_path, text):
-    p = tmp_path / "ov.yaml"
+    p = tmp_path / "ov.yml"
     p.write_text(text)
     return p
 

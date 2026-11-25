@@ -1,6 +1,6 @@
 """facets-wrapper command line.
 
-  convert        Excel mapping sheet -> <out>/<project>/mapping.yaml (+ report.md / report.json)
+  convert        Excel mapping sheet -> <out>/<project>/mapping.yml (+ report.md / report.yml)
   validate       check a config; optionally check every field path against real sample responses
   serve          run the wrapper API
   contract-test  replay recorded real responses, compare with human-verified expected output
@@ -34,7 +34,7 @@ def cmd_convert(a) -> int:
     except ConversionError as e:
         _p(f"ERROR: {e}")
         return 1
-    paths = write_outputs(res, a.out, a.format)
+    paths = write_outputs(res, a.out)
     s = res.stats
     _p(f"Converted '{a.excel}' -> {paths['config']}")
     _p(f"  fields mapped: {s['fields_mapped']}   rows skipped: {s['rows_skipped']} "
@@ -241,10 +241,9 @@ def main(argv: list[str] | None = None) -> int:
     c = sub.add_parser("convert", help="Excel -> YAML config")
     c.add_argument("--excel", required=True)
     c.add_argument("--project", required=True, help="project name (letters, digits, _ -)")
-    c.add_argument("--overrides", help="overrides.yaml with hand decisions")
-    c.add_argument("--out", default="configs", help="output root; writes <out>/<project>/mapping.yaml")
+    c.add_argument("--overrides", help="overrides.yml with hand decisions")
+    c.add_argument("--out", default="configs", help="output root; writes <out>/<project>/mapping.yml")
     c.add_argument("--sheet", help="worksheet name (default: 'Mapping Sheet' or the active sheet)")
-    c.add_argument("--format", choices=["yaml", "json"], default="yaml")
     c.add_argument("--strict", action="store_true", help="exit 2 if anything needs action / config not loadable")
     c.set_defaults(fn=cmd_convert)
 

@@ -5,8 +5,8 @@
 ```
                          BUILD TIME (per project)                       RUN TIME
  ┌────────────┐  ┌──────────────┐   ┌────────────────────────┐   ┌───────────────────────────────┐
- │ Excel      │  │ overrides    │   │  mapping.yaml          │   │ FastAPI  POST /v1/claims/enrich│
- │ mapping    ├─▶│ .yaml (hand  ├──▶│  sources:  endpoints   ├──▶│  Planner → Executor → Extract  │
+ │ Excel      │  │ overrides    │   │  mapping.yml          │   │ FastAPI  POST /v1/claims/enrich│
+ │ mapping    ├─▶│ .yml (hand   ├──▶│  sources:  endpoints   ├──▶│  Planner → Executor → Extract  │
  │ sheet      │  │ decisions)   │   │  fields:   field↔path  │   │  → Coerce → Assemble           │
  └────────────┘  └──────────────┘   └────────────────────────┘   └───────────────┬───────────────┘
        converter (facets-wrapper convert)            + report.md                  │ GET (parallel)
@@ -14,7 +14,7 @@
                                                                       Facets REST endpoints
 ```
 
-The code contains **no** Facets knowledge. Everything project-specific is in `mapping.yaml`.
+The code contains **no** Facets knowledge. Everything project-specific is in `mapping.yml`.
 
 ## 2. Vocabulary
 
@@ -24,7 +24,7 @@ The code contains **no** Facets knowledge. Everything project-specific is in `ma
 | **field** | One business field: which source, which JSONPath(s), type, required flag, optional transform |
 | **group** | A section of the sheet (`claim`, `line`, `matchum`, …). Output is grouped the same way |
 | **foreach source** | A source called once per item — e.g. once per claim line (`/Lines/{line_no}/Details`) |
-| **project** | One customer/environment: its own sheet, its own `mapping.yaml`, its own base URL & credentials |
+| **project** | One customer/environment: its own sheet, its own `mapping.yml`, its own base URL & credentials |
 
 ## 3. Request lifecycle
 
@@ -116,7 +116,7 @@ Error codes: `http_NNN`, `timeout`, `connect_error:<Type>`, `invalid_json`, `res
 
 ## 6. Multi-project
 
-`configs/<project>/mapping.yaml` — every directory is loaded at startup. Environment-specific
+`configs/<project>/mapping.yml` — every directory is loaded at startup. Environment-specific
 values (base URL, credentials, TLS, timeouts, API key) come from env vars per project
 (`FACETS_<PROJECT>_BASE_URL`, … see `settings.py`), **never** from the YAML, so one config can run
 in dev/UAT/prod. Hosts, ports and literal claim IDs found in the sheet are deliberately discarded
@@ -127,7 +127,7 @@ Startup is **fail-closed**: if any config is invalid the service refuses to star
 
 ## 7. Extending
 
-* **New project** – new sheet → `convert` → review report → add overrides → commit `mapping.yaml`.
+* **New project** – new sheet → `convert` → review report → add overrides → commit `mapping.yml`.
 * **Different JSON shape** – change `settings.path_template` (e.g. `$.data.{api_field_lower}`) or set `sources.<name>.response_root`; no code.
 * **Special value logic** – register a transform in a plugin module and list it in `FACETS_WRAPPER_PLUGINS`:
   ```python

@@ -5,7 +5,7 @@ Four levels, cheapest first. **Levels 1–3 prove the software works. Only level
 
 | Level | Needs Facets? | Proves | Time |
 |---|---|---|---|
-| 1. Automated suite | no | engine, converter, API behave as designed (116 tests) | 10 s |
+| 1. Automated suite | no | engine, converter, API behave as designed (117 tests) | 10 s |
 | 2. `selftest` | no | whole pipeline works on sample data | 5 s |
 | 3. Manual run vs mock Facets | no | you can operate it; failure behaviour visible | 15 min |
 | 4. Verify against real Facets | **yes** | **field paths and values are correct** | your sign-off |
@@ -42,7 +42,7 @@ planner (minimum calls, ordering); executor (retries, 404 vs 5xx, partial line f
 path-injection attempts, response_root, discovery modes); API (strict mode, auth, multi-project,
 readiness, reload keeps old config on bad new one); contract-test and `validate --samples`.
 
-All green ⇒ exit code 0 and `116 passed` (the number grows as tests are added).
+All green ⇒ exit code 0 and `117 passed` (the number grows as tests are added).
 
 ## 2. `selftest`
 
@@ -58,14 +58,14 @@ Two terminals (or two PowerShell windows), venv active in both.
 
 ```bash
 facets-wrapper sample --dir work
-facets-wrapper convert --excel work/sample_mapping.xlsx --project demo --overrides work/overrides.yaml --out work/configs
+facets-wrapper convert --excel work/sample_mapping.xlsx --project demo --overrides work/overrides.yml --out work/configs
 ```
 Open `work/configs/demo/report.md`: you should see 4 sections, 26 mapped fields, 6 skipped rows (1 mandatory), and warnings such as
 `FILL_SERIES_URLS`, `NON_REST_URL`, `DUPLICATE_MAPPING`, `BRACKET_PLACEHOLDER` — the sample deliberately contains the defect types found in the real sheet.
 
 **Terminal 1 — fake Facets**
 ```bash
-facets-wrapper mock-upstream --config work/configs/demo/mapping.yaml --port 9000
+facets-wrapper mock-upstream --config work/configs/demo/mapping.yml --port 9000
 ```
 **Terminal 2 — the wrapper**
 
@@ -134,11 +134,11 @@ $cred = Get-Credential
 Invoke-RestMethod -Uri "https://<facets-host>:10408/RestServices/facets/api/v1/Claims/<CLAIM>/Inquiry/Summary" -Credential $cred |
   ConvertTo-Json -Depth 30 | Out-File -Encoding utf8 samples\emblem\claims_inquiry_summary.json
 ```
-(Postman/browser “Save response” works too. Use the *source names* from your `mapping.yaml`.)
+(Postman/browser “Save response” works too. Use the *source names* from your `mapping.yml`.)
 
 ### 4.3 Check every field path against the real responses
 ```bash
-facets-wrapper validate --config configs/emblem/mapping.yaml --samples samples/emblem
+facets-wrapper validate --config configs/emblem/mapping.yml --samples samples/emblem
 ```
 Per field: `ok` · `ok (path exists, value empty in sample)` · `FAIL missing_in_source [REQUIRED]` · `NO SAMPLE`.
 Exit code 1 if any **required** field fails (`--strict`: also optional failures / missing samples).
@@ -155,9 +155,9 @@ cases/emblem/<case_name>/
     expected.json      what the business says the answer is
 ```
 ```bash
-facets-wrapper contract-test --config configs/emblem/mapping.yaml --cases cases/emblem --update   # snapshot once
+facets-wrapper contract-test --config configs/emblem/mapping.yml --cases cases/emblem --update   # snapshot once
 # >>> now a PERSON compares expected.json with the Facets screen/claim for each field and corrects it <<<
-facets-wrapper contract-test --config configs/emblem/mapping.yaml --cases cases/emblem            # from now on: regression gate
+facets-wrapper contract-test --config configs/emblem/mapping.yml --cases cases/emblem            # from now on: regression gate
 ```
 `--update` only records what the code currently produces — it is a starting point, **not** evidence of correctness until a person has checked it.
 Good cases: a normal claim; one with several lines; one with a missing optional source (no COB); one with
@@ -181,7 +181,7 @@ curl -s localhost:8000/v1/claims/enrich -H 'content-type: application/json' -d '
 - [ ] logs contain no PHI
 
 ### 4.6 Sign-off record
-Keep per project: `mapping.yaml` + `overrides.yaml` (git), the `report.md`, the contract cases and the date of the
+Keep per project: `mapping.yml` + `overrides.yml` (git), the `report.md`, the contract cases and the date of the
 Facets version they were verified against. **Re-run 4.3–4.4 after any Facets upgrade or sheet change.**
 The service itself helps: `missing_in_source` / `coercion_error` statuses in production are the signal that an upstream contract changed.
 

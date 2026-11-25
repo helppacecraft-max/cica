@@ -67,7 +67,7 @@ def test_banner_with_only_service_words_gets_a_fallback_title(tmp_path):
 
 def test_group_alias_override_in_settings(tmp_path):
     p = book(tmp_path / "e.xlsx", [(["Claim Level Data", "REST Services"], [ROW])])
-    ov = tmp_path / "ov.yaml"
+    ov = tmp_path / "ov.yml"
     ov.write_text("settings:\n  group_aliases: {'claim level data': 'header'}\n")
     assert convert(p, "p", ov).config["fields"][0]["group"] == "header"
 

@@ -3,7 +3,7 @@
 A **config-driven FastAPI wrapper** over Facets REST services.
 
 ```
- Excel mapping sheet ──convert──▶ mapping.yaml ──load──▶ wrapper API ──calls──▶ Facets REST endpoints
+ Excel mapping sheet ──convert──▶ mapping.yml ──load──▶ wrapper API ──calls──▶ Facets REST endpoints
    (business ↔ API field)         (one per project)      POST /v1/claims/enrich
 ```
 
@@ -26,17 +26,17 @@ python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\
 pip install -e ".[dev]"
 
 facets-wrapper selftest            # sample sheet -> YAML -> wrapper -> fake Facets, with assertions
-pytest                             # full automated suite (116 tests)
+pytest                             # full automated suite (117 tests)
 ```
 
 Try the real workflow on the built-in sample sheet:
 
 ```bash
-facets-wrapper sample --dir work                                   # sample_mapping.xlsx + overrides.yaml
+facets-wrapper sample --dir work                                   # sample_mapping.xlsx + overrides.yml
 facets-wrapper convert --excel work/sample_mapping.xlsx --project demo \
-                       --overrides work/overrides.yaml --out work/configs
+                       --overrides work/overrides.yml --out work/configs
 less work/configs/demo/report.md                                   # <- READ THE REPORT
-facets-wrapper mock-upstream --config work/configs/demo/mapping.yaml --port 9000     # terminal 1
+facets-wrapper mock-upstream --config work/configs/demo/mapping.yml --port 9000     # terminal 1
 FACETS_DEMO_BASE_URL=http://127.0.0.1:9000 \
 facets-wrapper serve --config-dir work/configs --port 8000                           # terminal 2
 curl -s localhost:8000/v1/claims/enrich -H 'content-type: application/json' \
@@ -48,7 +48,7 @@ Interactive API docs: <http://localhost:8000/docs>.
 
 ```bash
 facets-wrapper convert --excel MappingSheet_EH.xlsx --project emblem --out configs
-#   -> configs/emblem/mapping.yaml   (what the service loads)
+#   -> configs/emblem/mapping.yml   (what the service loads)
 #   -> configs/emblem/report.md      (what it could NOT map, and what you must decide)
 ```
 Then follow [docs/EXCEL_TO_CONFIG.md](docs/EXCEL_TO_CONFIG.md) → [docs/TESTING.md](docs/TESTING.md).
@@ -57,7 +57,7 @@ Then follow [docs/EXCEL_TO_CONFIG.md](docs/EXCEL_TO_CONFIG.md) → [docs/TESTING
 
 | Command | Purpose |
 |---|---|
-| `convert` | Excel → `mapping.yaml` (+ `report.md`, `report.json`) |
+| `convert` | Excel → `mapping.yml` (+ `report.md`, `report.yml`) |
 | `validate` | Check a config; with `--samples` check every field path against real responses |
 | `contract-test` | Replay recorded real responses, compare with human-verified `expected.json` |
 | `serve` | Run the wrapper API (refuses to start on an invalid config) |
@@ -70,7 +70,7 @@ Then follow [docs/EXCEL_TO_CONFIG.md](docs/EXCEL_TO_CONFIG.md) → [docs/TESTING
 |---|---|
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | understand the structure, request lifecycle, response contract, design decisions and **known limits** |
 | [docs/EXCEL_TO_CONFIG.md](docs/EXCEL_TO_CONFIG.md) | know the sheet layout expected, how rows become config, the overrides file, every warning code |
-| [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md) | hand-write or review a `mapping.yaml` |
+| [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md) | hand-write or review a `mapping.yml` |
 | [docs/TESTING.md](docs/TESTING.md) | run the execution tests (levels 1–4, incl. PowerShell) and sign off accuracy |
 
 ## Layout
@@ -82,6 +82,6 @@ src/facets_wrapper/
   engine/      planner.py  executor.py  client.py  extract.py  coerce.py  transforms.py  assemble.py  runtime.py
   api/         app.py  schemas.py                                       FastAPI app
   contract.py  mock_upstream.py  sample/  cli.py  settings.py
-configs/<project>/mapping.yaml                                          one directory per project
-tests/                                                                  116 tests
+configs/<project>/mapping.yml                                          one directory per project
+tests/                                                                  117 tests
 ```

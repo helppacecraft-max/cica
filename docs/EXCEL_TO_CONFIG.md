@@ -1,9 +1,9 @@
 # Excel → config
 
 ```bash
-facets-wrapper convert --excel MappingSheet.xlsx --project emblem [--overrides overrides.yaml] [--out configs] [--sheet "Mapping Sheet"] [--format yaml|json] [--strict]
+facets-wrapper convert --excel MappingSheet.xlsx --project emblem [--overrides overrides.yml] [--out configs] [--sheet "Mapping Sheet"] [--strict]
 ```
-Writes `configs/<project>/mapping.yaml`, `report.md`, `report.json`.
+Writes `configs/<project>/mapping.yml`, `report.md` (human) and `report.yml` (machine).
 Exit code: `0` ok · `1` unreadable input/bad overrides · `2` with `--strict` if anything needs action or the config is not loadable.
 
 > Close the workbook in Excel first (or convert a copy): Excel locks the file and the read fails.
@@ -47,7 +47,7 @@ Output is **deterministic** (no timestamps; source-file SHA-256 recorded) so con
 
 ## 3. The overrides file — where human decisions live
 
-The sheet cannot say *which JSON key holds the subscriber key* or *how to find line numbers*. Those decisions go in `overrides.yaml`; re-running `convert` re-applies them, so regenerating from an updated sheet never loses work. Unknown keys / unknown targets are **errors** (a typo must not silently do nothing).
+The sheet cannot say *which JSON key holds the subscriber key* or *how to find line numbers*. Those decisions go in `overrides.yml`; re-running `convert` re-applies them, so regenerating from an updated sheet never loses work. Unknown keys / unknown targets are **errors** (a typo must not silently do nothing).
 
 ```yaml
 settings:                       # change how the SHEET is interpreted (all optional; see converter/defaults.py)
@@ -107,8 +107,8 @@ Merge order: `project` → `source_aliases` → `sources` → `fields` → `add_
 ## 5. Workflow
 
 1. `convert` without overrides → read `report.md`.
-2. Create `overrides.yaml` from the ACTION REQUIRED snippets (aliases first, then params, discovery, field fixes).
+2. Create `overrides.yml` from the ACTION REQUIRED snippets (aliases first, then params, discovery, field fixes).
 3. `convert` again until *Config loadable: YES*.
 4. **Fix defects in the sheet itself** where you own it (fill-series URLs, duplicates) — overrides are a patch, the sheet is the source of truth for the business.
-5. Commit `mapping.yaml` + `overrides.yaml` (not the workbook: it may carry internal hosts/IDs).
+5. Commit `mapping.yml` + `overrides.yml` (not the workbook: it may carry internal hosts/IDs).
 6. Verify against real responses → [TESTING.md](TESTING.md) level 4.

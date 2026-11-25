@@ -20,7 +20,7 @@ def sample_dir(tmp_path_factory):
 @pytest.fixture(scope="session")
 def converted(sample_dir):
     """Sample workbook converted WITH overrides -> (result, config dir, config path)."""
-    res = convert(sample_dir / "sample_mapping.xlsx", "demo", sample_dir / "overrides.yaml")
+    res = convert(sample_dir / "sample_mapping.xlsx", "demo", sample_dir / "overrides.yml")
     paths = write_outputs(res, sample_dir / "configs")
     return res, sample_dir / "configs", paths["config"]
 

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import json
-import shutil
+
+import yaml
 
 from facets_wrapper.cli import main
 
@@ -14,9 +15,9 @@ def test_selftest_passes(capsys):
 
 def test_convert_cli_writes_outputs_and_strict_flag(sample_dir, tmp_path, capsys):
     args = ["convert", "--excel", str(sample_dir / "sample_mapping.xlsx"), "--project", "demo", "--out", str(tmp_path)]
-    assert main(args + ["--overrides", str(sample_dir / "overrides.yaml")]) == 0
-    assert (tmp_path / "demo" / "mapping.yaml").is_file() and (tmp_path / "demo" / "report.md").is_file()
-    assert json.loads((tmp_path / "demo" / "report.json").read_text())["loadable"] is True
+    assert main(args + ["--overrides", str(sample_dir / "overrides.yml")]) == 0
+    assert (tmp_path / "demo" / "mapping.yml").is_file() and (tmp_path / "demo" / "report.md").is_file()
+    assert yaml.safe_load((tmp_path / "demo" / "report.yml").read_text())["loadable"] is True
     # without overrides the config is not loadable -> --strict exits 2
     assert main(args + ["--strict"]) == 2
     assert "NOT loadable" in capsys.readouterr().out
@@ -33,7 +34,7 @@ def test_validate_structure_only(converted, capsys):
 
 
 def test_validate_invalid_config(tmp_path, capsys):
-    p = tmp_path / "m.yaml"
+    p = tmp_path / "m.yml"
     p.write_text("project: x\nsources: {}\nfields: []\n")
     assert main(["validate", "--config", str(p)]) == 1
 

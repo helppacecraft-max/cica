@@ -1,7 +1,7 @@
-# `mapping.yaml` reference
+# `mapping.yml` reference
 
 Normally generated (see [EXCEL_TO_CONFIG.md](EXCEL_TO_CONFIG.md)); read this to review or hand-write one.
-YAML and JSON are both accepted (`mapping.yaml` / `mapping.yml` / `mapping.json`). Unknown keys are rejected.
+Configs are **YAML**, named `mapping.yml` (`mapping.yaml` also loads). JSON config files are not supported. Unknown keys are rejected.
 
 ```yaml
 schema_version: 1
